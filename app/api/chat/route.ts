@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabaseAuth.auth.getUser();
   if (!user) return new Response('Unauthorized', { status: 401 });
 
-  const { message, agentId, goalId } = await req.json() as { message: string; agentId?: string; goalId?: string };
+  const { message, agentId, goalId, sessionId } = await req.json() as { message: string; agentId?: string; goalId?: string; sessionId?: string };
   const serviceClient = createServiceClient();
 
   // Load the agent configuration from Supabase
@@ -100,8 +100,65 @@ export async function POST(req: Request) {
   const write = (data: string) => writer.write(encoder.encode(data));
 
   (async () => {
+    let resolvedSessionId: string | null = null;
+    let messages: MessageParam[] = [];
     try {
-      const messages: MessageParam[] = [{ role: 'user', content: message }];
+      // Find or load active session
+      let session: any = null;
+      if (sessionId) {
+        const { data } = await serviceClient
+          .from('sessions')
+          .select('*')
+          .eq('id', sessionId)
+          .single();
+        session = data;
+      }
+
+      if (!session && agentId) {
+        const query = serviceClient
+          .from('sessions')
+          .select('*')
+          .eq('agent_id', agentId)
+          .eq('status', 'active');
+        
+        if (goalId) {
+          query.eq('goal_id', goalId);
+        } else {
+          query.is('goal_id', null);
+        }
+        
+        const { data } = await query.order('started_at', { ascending: false }).limit(1).maybeSingle();
+        session = data;
+
+        if (!session) {
+          const { data: newSession, error: createError } = await serviceClient
+            .from('sessions')
+            .insert({
+              agent_id: agentId,
+              goal_id: goalId || null,
+              status: 'active',
+              messages: []
+            })
+            .select()
+            .single();
+          if (!createError) {
+            session = newSession;
+          }
+        }
+      }
+
+      if (session) {
+        resolvedSessionId = session.id;
+        write(encode({ type: 'session_init', sessionId: session.id }));
+        if (Array.isArray(session.messages)) {
+          messages = session.messages.map((m: any) => ({
+            role: m.role,
+            content: m.content
+          }));
+        }
+      }
+
+      messages.push({ role: 'user', content: message });
       let continueLoop = true;
       let loopCount = 0;
       const MAX_LOOPS = 10;
@@ -188,6 +245,18 @@ export async function POST(req: Request) {
     } catch (err) {
       write(encode({ type: 'error', message: String(err) }));
     } finally {
+      // Save session messages back to the database
+      if (resolvedSessionId && messages.length > 0) {
+        try {
+          await serviceClient
+            .from('sessions')
+            .update({ messages: messages })
+            .eq('id', resolvedSessionId);
+        } catch (err) {
+          console.error("Error saving session messages:", err);
+        }
+      }
+
       // 1. Send push notification that agent finished response
       try {
         await sendNotificationToAll(

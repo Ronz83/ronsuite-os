@@ -39,6 +39,82 @@ export function ChatInterface() {
 
   const [currentGoalId, setCurrentGoalId] = useState<string | null>(null);
   const [goalContext, setGoalContext] = useState<any>(null);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+
+  // Helper to load active session from Supabase
+  const loadActiveSession = useCallback(async (agentId: string, goalId: string | null, targetGoalCtx?: any) => {
+    const activeGoalCtx = targetGoalCtx || goalContext;
+    try {
+      const query = supabase
+        .from('sessions')
+        .select('*')
+        .eq('agent_id', agentId)
+        .eq('status', 'active');
+
+      if (goalId) {
+        query.eq('goal_id', goalId);
+      } else {
+        query.is('goal_id', null);
+      }
+
+      const { data, error } = await query
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        setCurrentSessionId(data.id);
+        if (Array.isArray(data.messages) && data.messages.length > 0) {
+          const clientMsgs: Message[] = data.messages.map((m: any) => ({
+            id: m.id || crypto.randomUUID(),
+            role: m.role,
+            content: typeof m.content === 'string'
+              ? m.content
+              : Array.isArray(m.content)
+                ? m.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n')
+                : '',
+            toolCalls: Array.isArray(m.content)
+              ? m.content.filter((c: any) => c.type === 'tool_use').map((c: any) => ({
+                  name: c.name,
+                  status: 'done' as const,
+                  result: typeof c.result === 'string' ? c.result : undefined
+                }))
+              : []
+          }));
+          setMessages(clientMsgs);
+        } else if (activeGoalCtx) {
+          setMessages([
+            {
+              id: crypto.randomUUID(),
+              role: 'assistant',
+              content: `🎯 **Goal Scoped Session Initiated**\n\n**Goal**: ${activeGoalCtx.title}\n**Project**: ${activeGoalCtx.projects?.name || 'Global'}\n**Assigned Agent**: ${activeGoalCtx.agents?.name || 'None'}\n**Turn Budget**: ${activeGoalCtx.turns_used} / ${activeGoalCtx.turn_budget} turns used\n\nI am ready to help you execute this goal. What would you like to build first?`,
+            }
+          ]);
+        } else {
+          setMessages([]);
+        }
+      } else {
+        setCurrentSessionId(null);
+        if (activeGoalCtx) {
+          setMessages([
+            {
+              id: crypto.randomUUID(),
+              role: 'assistant',
+              content: `🎯 **Goal Scoped Session Initiated**\n\n**Goal**: ${activeGoalCtx.title}\n**Project**: ${activeGoalCtx.projects?.name || 'Global'}\n**Assigned Agent**: ${activeGoalCtx.agents?.name || 'None'}\n**Turn Budget**: ${activeGoalCtx.turns_used} / ${activeGoalCtx.turn_budget} turns used\n\nI am ready to help you execute this goal. What would you like to build first?`,
+            }
+          ]);
+        } else {
+          setMessages([]);
+        }
+      }
+    } catch (err) {
+      console.error('Error loading active session:', err);
+      setCurrentSessionId(null);
+      setMessages([]);
+    }
+  }, [supabase, goalContext]);
 
   // Load agents on mount
   useEffect(() => {
@@ -77,17 +153,13 @@ export function ChatInterface() {
 
           // Find agent assigned to the goal
           const assignedAgent = agents.find(a => a.id === goalData.agent_id);
+          const targetAgent = assignedAgent || agents[0];
           if (assignedAgent) {
             setSelectedAgent(assignedAgent);
           }
 
-          // Pre-populate with a greeting starting message from the selected agent
-          const systemGreeting: Message = {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content: `🎯 **Goal Scoped Session Initiated**\n\n**Goal**: ${goalData.title}\n**Project**: ${goalData.projects?.name || 'Global'}\n**Assigned Agent**: ${goalData.agents?.name || 'None'}\n**Turn Budget**: ${goalData.turns_used} / ${goalData.turn_budget} turns used\n\nI am ready to help you execute this goal. What would you like to build first?`,
-          };
-          setMessages([systemGreeting]);
+          // Trigger loading active session or show greeting
+          loadActiveSession(targetAgent.id, goalId, goalData);
         }
       } catch (err) {
         console.error('Error loading goal context:', err);
@@ -95,7 +167,13 @@ export function ChatInterface() {
     }
 
     loadGoal();
-  }, [goalId, agents]);
+  }, [goalId, agents, loadActiveSession]);
+
+  // Load session when agent changes (if not loading goal or after goal loads)
+  useEffect(() => {
+    if (!selectedAgent || goalId) return;
+    loadActiveSession(selectedAgent.id, currentGoalId);
+  }, [selectedAgent, currentGoalId, loadActiveSession, goalId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -108,6 +186,7 @@ export function ChatInterface() {
     setMessages([]);
     setCurrentGoalId(null);
     setGoalContext(null);
+    setCurrentSessionId(null);
   };
 
   const sendMessage = useCallback(async () => {
@@ -129,6 +208,7 @@ export function ChatInterface() {
           message: userMsg.content,
           agentId: selectedAgent.id,
           goalId: currentGoalId || undefined,
+          sessionId: currentSessionId || undefined,
         }),
         signal: abortRef.current.signal,
       });
@@ -150,7 +230,9 @@ export function ChatInterface() {
           if (!line.startsWith('data: ')) continue;
           try {
             const event = JSON.parse(line.slice(6));
-            if (event.type === 'text') {
+            if (event.type === 'session_init') {
+              setCurrentSessionId(event.sessionId);
+            } else if (event.type === 'text') {
               setMessages(prev => prev.map(m =>
                 m.id === assistantId ? { ...m, content: m.content + event.content } : m
               ));
@@ -189,7 +271,7 @@ export function ChatInterface() {
       setStreaming(false);
       abortRef.current = null;
     }
-  }, [input, streaming, selectedAgent, currentGoalId]);
+  }, [input, streaming, selectedAgent, currentGoalId, currentSessionId]);
 
   const isOrchestrator = selectedAgent?.role === 'orchestrator';
 
