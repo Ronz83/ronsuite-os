@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { promises as fs } from 'fs';
 
 export const plannerToolDefinitions: Anthropic.Tool[] = [
   {
@@ -60,6 +61,76 @@ export const plannerToolDefinitions: Anthropic.Tool[] = [
         },
       },
       required: ['project_slug'],
+    },
+  },
+  {
+    name: 'web_search',
+    description: 'Perform a web search to find current information and facts',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Search query to look up on the web',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'list_local_dir',
+    description: 'List contents of a local directory under C:\\Users\\Ronald to inspect codebases or files',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        dir_path: {
+          type: 'string',
+          description: 'Absolute path to the directory (e.g. "C:\\Users\\Ronald\\projects" or "C:\\Users\\Ronald\\.gemini\\antigravity\\memory\\wikis\\antigravity_master\\wiki")',
+        },
+      },
+      required: ['dir_path'],
+    },
+  },
+  {
+    name: 'read_local_file',
+    description: 'Read the text content of a local file under C:\\Users\\Ronald (e.g. source files, configs, markdown files)',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        file_path: {
+          type: 'string',
+          description: 'Absolute path to the file (e.g. "C:\\Users\\Ronald\\projects\\ronsuite-os\\package.json")',
+        },
+      },
+      required: ['file_path'],
+    },
+  },
+  {
+    name: 'add_memory_record',
+    description: 'Save a key learning, project context, decision, or note to the global memory graph (the brain) so it can be retrieved in future sessions.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        title: {
+          type: 'string',
+          description: 'Descriptive title for this memory card (e.g. "Tailwind v4 Migration Optimization")',
+        },
+        content: {
+          type: 'string',
+          description: 'Detailed content, context, or rule to remember.',
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional tags to categorize the memory (e.g. ["nws", "tailwind", "optimization"])',
+        },
+        project_slug: {
+          type: 'string',
+          enum: ['caricom-business', 'ticketflows', 'nws', 'ronsuite-os'],
+          description: 'Optional project this memory belongs to',
+        },
+      },
+      required: ['title', 'content'],
     },
   },
 ];
@@ -132,6 +203,109 @@ export async function executeToolCall(
       const { data, error } = await query.limit(50);
       if (error) return JSON.stringify({ error: error.message });
       return JSON.stringify({ tasks: data, count: data?.length ?? 0 });
+    }
+    case 'web_search': {
+      const { query } = toolInput as { query: string };
+      const apiKey = process.env.BRAVE_SEARCH_API_KEY;
+      if (!apiKey) {
+        return JSON.stringify({ error: 'Brave Search API key is not configured. Please add BRAVE_SEARCH_API_KEY to your env variables.' });
+      }
+
+      try {
+        const response = await fetch(
+          `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}`,
+          {
+            headers: {
+              'Accept': 'application/json',
+              'Accept-Encoding': 'gzip',
+              'X-Subscription-Token': apiKey,
+            },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`Brave API error: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        const results = data.web?.results?.map((item: any) => ({
+          title: item.title,
+          url: item.url,
+          description: item.description,
+        })).slice(0, 5) || [];
+
+        return JSON.stringify({ results, count: results.length });
+      } catch (err: any) {
+        return JSON.stringify({ error: `Search request failed: ${err.message}` });
+      }
+    }
+    case 'list_local_dir': {
+      const { dir_path } = toolInput as { dir_path: string };
+      if (!dir_path.toLowerCase().startsWith('c:\\users\\ronald')) {
+        return JSON.stringify({ error: 'Access denied: Directory must be under C:\\Users\\Ronald' });
+      }
+      try {
+        const files = await fs.readdir(dir_path, { withFileTypes: true });
+        const list = files.map(f => ({
+          name: f.name,
+          isDirectory: f.isDirectory(),
+        }));
+        return JSON.stringify({ path: dir_path, files: list, count: list.length });
+      } catch (err: any) {
+        return JSON.stringify({ error: `Failed to list directory: ${err.message}` });
+      }
+    }
+    case 'read_local_file': {
+      const { file_path } = toolInput as { file_path: string };
+      if (!file_path.toLowerCase().startsWith('c:\\users\\ronald')) {
+        return JSON.stringify({ error: 'Access denied: File must be under C:\\Users\\Ronald' });
+      }
+      try {
+        const content = await fs.readFile(file_path, 'utf8');
+        const truncated = content.length > 10000 ? content.slice(0, 10000) + '\n... [TRUNCATED]' : content;
+        return JSON.stringify({ path: file_path, content: truncated, size: content.length });
+      } catch (err: any) {
+        return JSON.stringify({ error: `Failed to read file: ${err.message}` });
+      }
+    }
+    case 'add_memory_record': {
+      const { title, content, tags, project_slug } = toolInput as {
+        title: string;
+        content: string;
+        tags?: string[];
+        project_slug?: string;
+      };
+      
+      try {
+        let projectId: string | null = null;
+        if (project_slug) {
+          const { data: project } = await supabaseServiceClient
+            .from('projects')
+            .select('id')
+            .eq('slug', project_slug)
+            .single();
+          if (project) {
+            projectId = project.id;
+          }
+        }
+
+        const { data, error } = await supabaseServiceClient
+          .from('memory')
+          .insert({
+            title: title.trim(),
+            content: content.trim(),
+            tags: tags || [],
+            project_id: projectId,
+            source: 'agent',
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        return JSON.stringify({ success: true, memory_id: data.id, title: data.title });
+      } catch (err: any) {
+        return JSON.stringify({ error: `Failed to save memory: ${err.message}` });
+      }
     }
     default:
       return JSON.stringify({ error: `Unknown tool: ${toolName}` });

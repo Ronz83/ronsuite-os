@@ -1,3 +1,7 @@
+-- Migration: 001_initial
+-- Applied: via Supabase SQL Editor
+-- Sets up core schema: projects, agents, goals, tasks, sessions, memory
+
 -- Projects
 create table if not exists projects (
   id uuid primary key default gen_random_uuid(),

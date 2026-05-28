@@ -2,9 +2,9 @@ import { Sidebar } from '@/components/Sidebar';
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
+    <div className="layout-container">
       <Sidebar />
-      <main style={{ flex: 1, overflow: 'auto' }}>{children}</main>
+      <main className="layout-main">{children}</main>
     </div>
   );
 }

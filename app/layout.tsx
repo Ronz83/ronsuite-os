@@ -16,9 +16,11 @@ export const viewport: Viewport = {
 };
 
 
+import { PushSubscriptionManager } from '@/components/PushSubscriptionManager';
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="manifest" href="/manifest.json" />
         <meta name="mobile-web-app-capable" content="yes" />
@@ -27,7 +29,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="theme-color" content="#6366f1" />
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
       </head>
-      <body>{children}</body>
+      <body>
+        <PushSubscriptionManager />
+        {children}
+      </body>
     </html>
   );
 }

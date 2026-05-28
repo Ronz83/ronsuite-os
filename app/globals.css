@@ -66,3 +66,153 @@ input, textarea {
 ::selection {
   background: rgba(99, 102, 241, 0.3);
 }
+
+/* --- Layout System --- */
+.layout-container {
+  display: flex;
+  min-height: 100vh;
+}
+
+.layout-main {
+  flex: 1;
+  overflow: auto;
+}
+
+/* --- Responsive Adjustments (Mobile <= 768px) --- */
+@media (max-width: 768px) {
+  /* Layout container columns direction */
+  .layout-container {
+    flex-direction: column;
+  }
+  
+  /* Compact layout margins */
+  main[style*="padding: 2.5rem"],
+  div[style*="padding: 2.5rem"] {
+    padding: 1.25rem !important;
+  }
+
+  /* Responsive Sidebar */
+  .app-sidebar {
+    width: 100% !important;
+    min-height: auto !important;
+    height: auto !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 0.75rem 1rem !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border) !important;
+  }
+
+  .sidebar-logo {
+    margin-bottom: 0 !important;
+    padding: 0 !important;
+  }
+
+  .sidebar-logo span {
+    display: none; /* Hide brand text, show symbol only on small screens */
+  }
+
+  .sidebar-nav {
+    flex-direction: row !important;
+    flex: 1 !important;
+    justify-content: flex-start !important;
+    align-items: center !important;
+    gap: 0.25rem !important;
+    padding: 0 !important;
+    margin: 0 0.5rem !important;
+    overflow-x: auto !important;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sidebar-nav::-webkit-scrollbar {
+    display: none; /* Hide scrollbar in nav bar */
+  }
+
+  .sidebar-nav a {
+    padding: 0.4rem 0.6rem !important;
+    font-size: 0.8rem !important;
+    flex-shrink: 0;
+  }
+
+  .sidebar-signout {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .sidebar-signout button {
+    padding: 0.4rem 0.6rem !important;
+    font-size: 0.8rem !important;
+    width: auto !important;
+  }
+
+  /* Responsive Chat Interface */
+  .chat-container {
+    flex-direction: column !important;
+    height: calc(100vh - 65px) !important; /* Sidebar header occupies ~65px */
+  }
+
+  .chat-agent-selector {
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border) !important;
+    flex-direction: row !important;
+    padding: 0.5rem 1rem !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    flex-shrink: 0 !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .chat-agent-selector h2 {
+    display: none !important;
+  }
+
+  .chat-agent-selector > div {
+    flex-direction: row !important;
+    width: max-content !important;
+    gap: 0.5rem !important;
+    overflow: visible !important;
+  }
+
+  .chat-agent-selector button {
+    width: auto !important;
+    padding: 0.4rem 0.75rem !important;
+    flex-shrink: 0 !important;
+  }
+
+  .chat-agent-selector button div {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .chat-agent-selector button div > div:last-child {
+    display: none; /* Hide agent descriptions on mobile */
+  }
+
+  .chat-main-area {
+    height: 100% !important;
+  }
+
+  /* Responsive Kanban Board */
+  .board-grid {
+    grid-template-columns: 1fr !important;
+    overflow-y: auto !important;
+    padding-bottom: 2rem;
+  }
+
+  .board-column {
+    max-height: 380px !important;
+    margin-bottom: 0.75rem;
+    flex-shrink: 0;
+  }
+
+  /* General Grid layout wrapping rules */
+  .grid[style*="repeat(auto-fill"] {
+    grid-template-columns: 1fr !important;
+  }
+}
+

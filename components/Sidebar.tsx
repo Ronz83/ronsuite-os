@@ -8,6 +8,9 @@ const NAV = [
   { href: '/dashboard', icon: '⬛', label: 'Dashboard' },
   { href: '/chat', icon: '💬', label: 'Chat' },
   { href: '/projects', icon: '🗂', label: 'Projects' },
+  { href: '/goals', icon: '🎯', label: 'Goals' },
+  { href: '/board', icon: '📋', label: 'Board' },
+  { href: '/memory', icon: '🧠', label: 'Memory' },
 ];
 
 export function Sidebar() {
@@ -22,13 +25,13 @@ export function Sidebar() {
   }
 
   return (
-    <aside style={{
+    <aside className="app-sidebar" style={{
       width: '220px', minHeight: '100vh', background: 'var(--surface)',
       borderRight: '1px solid var(--border)', display: 'flex',
       flexDirection: 'column', padding: '1.25rem 0', flexShrink: 0
     }}>
       {/* Logo */}
-      <div style={{ padding: '0 1.25rem', marginBottom: '2rem' }}>
+      <div className="sidebar-logo" style={{ padding: '0 1.25rem', marginBottom: '2rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
           <div style={{
             width: '32px', height: '32px', borderRadius: '8px',
@@ -40,7 +43,7 @@ export function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px', padding: '0 0.75rem' }}>
+      <nav className="sidebar-nav" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px', padding: '0 0.75rem' }}>
         {NAV.map(item => {
           const active = pathname === item.href || pathname.startsWith(item.href + '/');
           return (
@@ -48,7 +51,7 @@ export function Sidebar() {
               display: 'flex', alignItems: 'center', gap: '0.75rem',
               padding: '0.625rem 0.75rem', borderRadius: '8px',
               color: active ? 'var(--text)' : 'var(--muted)',
-              background: active ? 'rgba(99,102,241,0.15)' : 'transparent',
+              background: active ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
               textDecoration: 'none', fontSize: '0.9rem', fontWeight: active ? 600 : 400,
               transition: 'all 0.15s'
             }}>
@@ -60,7 +63,7 @@ export function Sidebar() {
       </nav>
 
       {/* Sign out */}
-      <div style={{ padding: '0 0.75rem' }}>
+      <div className="sidebar-signout" style={{ padding: '0 0.75rem' }}>
         <button onClick={signOut} style={{
           width: '100%', display: 'flex', alignItems: 'center', gap: '0.75rem',
           padding: '0.625rem 0.75rem', borderRadius: '8px',
