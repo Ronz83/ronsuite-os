@@ -5,7 +5,10 @@ import { NextResponse } from 'next/server';
 export async function POST(req: Request) {
   const supabaseAuth = await createClient();
   const { data: { user } } = await supabaseAuth.auth.getUser();
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  const authHeader = req.headers.get('x-supabase-key');
+  const isServiceRole = authHeader && authHeader === process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!user && !isServiceRole) return new Response('Unauthorized', { status: 401 });
 
   try {
     const { id, status } = await req.json() as { id: string; status: 'flushed' | 'failed' };

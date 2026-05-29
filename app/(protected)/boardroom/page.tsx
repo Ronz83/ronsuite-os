@@ -32,6 +32,10 @@ export default function BoardroomPage() {
   const [streaming, setStreaming] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   
+  // Bridge & Mode State
+  const [bridgeMode, setBridgeMode] = useState<'cloud' | 'bridge'>('cloud');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
   // Persistent meeting turns thread
   const [turns, setTurns] = useState<BoardroomTurn[]>([]);
 
@@ -142,6 +146,75 @@ export default function BoardroomPage() {
     loadLatestSession();
   }, [supabase]);
 
+  // Bridge Ping & Recheck Loop (re-checks status every 60s)
+  useEffect(() => {
+    async function checkBridgeStatus() {
+      const forceCloud = localStorage.getItem('ronsuite_force_cloud') === 'true';
+      if (forceCloud) {
+        setBridgeMode(prev => {
+          if (prev === 'bridge') {
+            showToast("Force Cloud Mode enabled — switched to Cloud Mode");
+          }
+          return 'cloud';
+        });
+        return;
+      }
+
+      const savedUrl = localStorage.getItem('ronsuite_bridge_url');
+      const bridgeUrl = savedUrl || process.env.NEXT_PUBLIC_BRIDGE_URL || 'http://localhost:3001';
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        const cleanUrl = bridgeUrl.replace(/\/$/, '');
+
+        const res = await fetch(`${cleanUrl}/health`, {
+          signal: controller.signal,
+          mode: 'cors'
+        });
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.mode === 'bridge') {
+            setBridgeMode('bridge');
+            return;
+          }
+        }
+        
+        setBridgeMode(prev => {
+          if (prev === 'bridge') {
+            showToast("Bridge offline — switched to Cloud Mode");
+          }
+          return 'cloud';
+        });
+      } catch (err) {
+        setBridgeMode(prev => {
+          if (prev === 'bridge') {
+            showToast("Bridge offline — switched to Cloud Mode");
+          }
+          return 'cloud';
+        });
+      }
+    }
+
+    checkBridgeStatus();
+    const interval = setInterval(checkBridgeStatus, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  function showToast(msg: string) {
+    setToastMessage(msg);
+  }
+
+  // Clear toast
+  useEffect(() => {
+    if (toastMessage) {
+      const timer = setTimeout(() => setToastMessage(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastMessage]);
+
   // Scroll current streaming columns
   useEffect(() => {
     if (antigravityScrollRef.current) antigravityScrollRef.current.scrollTop = antigravityScrollRef.current.scrollHeight;
@@ -197,12 +270,129 @@ export default function BoardroomPage() {
     setStreaming(true);
     setInput('');
 
-    console.log("[Boardroom UI] Sending payload:", {
-      message: userMsg,
-      directed_to: targetVal,
-      session_id: sessionId
-    });
+    // --- Power Mode WebSocket Execution ---
+    if (bridgeMode === 'bridge') {
+      const savedUrl = localStorage.getItem('ronsuite_bridge_url');
+      const bridgeUrl = savedUrl || process.env.NEXT_PUBLIC_BRIDGE_URL || 'http://localhost:3001';
+      const wsUrl = bridgeUrl.replace(/^http/, 'ws');
 
+      try {
+        console.log(`[Boardroom WS] Initiating dynamic CLI streams at ${wsUrl}`);
+        
+        let resolvedSessionId = sessionId;
+        if (!resolvedSessionId) {
+          const { data: newSession, error: sessErr } = await supabase
+            .from('boardroom_sessions')
+            .insert({ mode: 'bridge' })
+            .select()
+            .single();
+          if (sessErr) throw sessErr;
+          resolvedSessionId = newSession.id;
+          setSessionId(newSession.id);
+        }
+
+        const activeResponses: Record<string, string> = {
+          'Antigravity': '',
+          'Codex': '',
+          'Claude Code': '',
+        };
+
+        const runAgentWs = (agt: string) => {
+          return new Promise<void>((resolve, reject) => {
+            const socket = new WebSocket(wsUrl);
+            const agentKey = agt === 'Claude Code' ? 'claude' : agt.toLowerCase();
+
+            socket.onopen = () => {
+              socket.send(JSON.stringify({
+                type: 'message',
+                agent: agentKey,
+                content: userMsg
+              }));
+            };
+
+            socket.onmessage = (event) => {
+              try {
+                const data = JSON.parse(event.data);
+                if (data.type === 'text') {
+                  setCurrentTurnResponses(prev => {
+                    const nextText = (prev[agt] || '') + data.text;
+                    activeResponses[agt] = nextText;
+                    return {
+                      ...prev,
+                      [agt]: nextText
+                    };
+                  });
+                } else if (data.type === 'error') {
+                  setCurrentTurnErrors(prev => ({
+                    ...prev,
+                    [agt]: data.message
+                  }));
+                } else if (data.type === 'agent_done') {
+                  socket.close();
+                  resolve();
+                }
+              } catch (err) {
+                console.error("[WS Message Error]", err);
+              }
+            };
+
+            socket.onerror = (err) => {
+              console.error("[WS Connection Error]", err);
+              reject(new Error(`WebSocket error for agent ${agt}`));
+            };
+
+            socket.onclose = () => {
+              resolve();
+            };
+          });
+        };
+
+        // Fire WebSocket connections in parallel
+        await Promise.all(targetAgents.map(agt => runAgentWs(agt)));
+
+        // Log completed turn to Supabase
+        const turnRes = targetAgents.map(agt => ({
+          agent: agt,
+          text: activeResponses[agt] || ''
+        }));
+
+        const { data: turnData, error: turnErr } = await supabase
+          .from('boardroom_turns')
+          .insert({
+            session_id: resolvedSessionId,
+            user_message: userMsg,
+            directed_to: targetVal,
+            responses: turnRes
+          })
+          .select()
+          .single();
+
+        if (turnErr) throw turnErr;
+
+        // Append completed turn to local thread view state
+        setTurns(prev => [...prev, {
+          id: turnData.id || crypto.randomUUID(),
+          user_message: userMsg,
+          directed_to: targetVal,
+          responses: activeResponses,
+          synthesis: null
+        }]);
+
+        // Reset current streaming states
+        setCurrentTurnUserMessage('');
+        setCurrentTurnDirectedTo(null);
+        setCurrentTurnResponses({ 'Antigravity': '', 'Codex': '', 'Claude Code': '' });
+        setStreaming(false);
+        return;
+      } catch (err) {
+        console.error("[Boardroom WS] Connection failed, switching to Cloud Mode...", err);
+        setBridgeMode('cloud');
+        showToast("Bridge offline — switched to Cloud Mode");
+        // Fallback continues below
+      }
+    }
+
+    // --- Cloud Mode HTTP SSE Fallback ---
     try {
       const res = await fetch('/api/boardroom', {
         method: 'POST',
@@ -220,8 +410,6 @@ export default function BoardroomPage() {
       const decoder = new TextDecoder();
       let buffer = '';
 
-      let activeSessionId = sessionId;
-
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -236,7 +424,6 @@ export default function BoardroomPage() {
             const event = JSON.parse(line.slice(6));
             if (event.type === 'session_init') {
               setSessionId(event.sessionId);
-              activeSessionId = event.sessionId;
             } else if (event.type === 'text') {
               setCurrentTurnResponses(prev => ({
                 ...prev,
@@ -252,7 +439,6 @@ export default function BoardroomPage() {
                 alert(`Error: ${event.message}`);
               }
             } else if (event.type === 'turn_complete') {
-              // Final turn responses map
               const turnResMap: Record<string, string> = {};
               if (Array.isArray(event.responses)) {
                 event.responses.forEach((r: any) => {
@@ -264,7 +450,6 @@ export default function BoardroomPage() {
                 });
               }
 
-              // Append completed turn to persistent thread
               setTurns(prev => [...prev, {
                 id: event.turnId || crypto.randomUUID(),
                 user_message: userMsg,
@@ -273,7 +458,6 @@ export default function BoardroomPage() {
                 synthesis: null
               }]);
 
-              // Reset current streaming turn states
               setCurrentTurnUserMessage('');
               setCurrentTurnDirectedTo(null);
               setCurrentTurnResponses({ 'Antigravity': '', 'Codex': '', 'Claude Code': '' });
@@ -416,7 +600,7 @@ export default function BoardroomPage() {
     // Insert fresh cloud session
     const { data: newSession } = await supabase
       .from('boardroom_sessions')
-      .insert({ mode: 'cloud' })
+      .insert({ mode: bridgeMode })
       .select()
       .single();
 
@@ -473,6 +657,37 @@ export default function BoardroomPage() {
       position: 'relative',
       overflow: 'hidden'
     }}>
+      {/* Toast Notification Banner */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 15 }}
+            exit={{ opacity: 0, y: -20 }}
+            style={{
+              position: 'absolute',
+              top: '1rem',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: 'var(--surface-2)',
+              border: '1px solid var(--border)',
+              borderRadius: '8px',
+              padding: '0.625rem 1.25rem',
+              color: 'var(--text)',
+              fontSize: '0.8125rem',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+              zIndex: 9999,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}
+          >
+            <AlertCircle size={16} style={{ color: 'var(--warning)' }} />
+            <span>{toastMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <header style={{
         display: 'flex',
@@ -490,7 +705,7 @@ export default function BoardroomPage() {
             <p style={{ fontSize: '0.75rem', color: 'var(--muted)', marginTop: '1px' }}>Department Head Alignment Meeting</p>
           </div>
 
-          {/* Bridge Status Indicator */}
+          {/* Dynamic Bridge Status Indicator */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -506,9 +721,11 @@ export default function BoardroomPage() {
               width: '6px',
               height: '6px',
               borderRadius: '50%',
-              background: '#94a3b8',
+              background: bridgeMode === 'bridge' ? '#22c55e' : '#94a3b8',
             }} />
-            <span style={{ color: 'var(--muted)' }}>Cloud Mode</span>
+            <span style={{ color: bridgeMode === 'bridge' ? '#22c55e' : 'var(--muted)' }}>
+              {bridgeMode === 'bridge' ? 'Power Mode' : 'Cloud Mode'}
+            </span>
           </div>
         </div>
 
@@ -546,7 +763,7 @@ export default function BoardroomPage() {
         display: 'flex',
         flexDirection: 'column',
         gap: '2.5rem',
-        paddingBottom: '9.5rem', // space for input bar
+        paddingBottom: '9.5rem',
       }}>
         {/* Render Previous Thread Turns */}
         {turns.map((turn, index) => (
@@ -741,7 +958,6 @@ export default function BoardroomPage() {
         {/* Current Streaming Turn */}
         {currentTurnUserMessage && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            {/* Streaming message */}
             <div style={{
               display: 'flex',
               gap: '0.75rem',
@@ -781,7 +997,6 @@ export default function BoardroomPage() {
 
             {/* Streaming columns */}
             {currentTurnDirectedTo ? (
-              // Single targeted agent stream
               <div style={{
                 background: 'var(--surface)',
                 border: `1px solid ${agentColors[currentTurnDirectedTo]}55`,
@@ -825,7 +1040,6 @@ export default function BoardroomPage() {
                 </div>
               </div>
             ) : (
-              // All agents parallel streams
               !isMobile ? (
                 <div style={{
                   display: 'grid',
@@ -886,7 +1100,6 @@ export default function BoardroomPage() {
                   ))}
                 </div>
               ) : (
-                // Mobile tabs stream layout
                 <div style={{
                   display: 'flex',
                   flexDirection: 'column',
@@ -938,7 +1151,7 @@ export default function BoardroomPage() {
           </div>
         )}
 
-        {/* Synthesize and Action Buttons for persistent turn context */}
+        {/* Synthesize and Action Buttons */}
         {hasLastTurnResponses && !streaming && (
           <div style={{
             display: 'flex',
@@ -946,7 +1159,6 @@ export default function BoardroomPage() {
             gap: '1rem',
             marginTop: '1.5rem',
           }}>
-            {/* Action buttons */}
             <div style={{ display: 'flex', gap: '1rem' }}>
               <button
                 onClick={handleSynthesize}
@@ -998,7 +1210,6 @@ export default function BoardroomPage() {
               )}
             </div>
 
-            {/* Synthesis stream container */}
             {(synthesis || synthesisStreaming) && (
               <div
                 ref={synthesisScrollRef}
@@ -1027,7 +1238,6 @@ export default function BoardroomPage() {
           </div>
         )}
 
-        {/* Empty state when no turns exist */}
         {!hasLastTurnResponses && !currentTurnUserMessage && (
           <div style={{ textAlign: 'center', padding: '6rem 0', color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '16px' }}>
             <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🤝</div>
@@ -1054,7 +1264,6 @@ export default function BoardroomPage() {
         gap: '0.75rem',
         zIndex: 50,
       }}>
-        {/* Input Settings & Toggle */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -1107,7 +1316,6 @@ export default function BoardroomPage() {
           })}
         </div>
 
-        {/* Input Bar Form */}
         <form onSubmit={handleSend} style={{ display: 'flex', gap: '0.75rem' }}>
           <input
             type="text"
@@ -1153,7 +1361,7 @@ export default function BoardroomPage() {
         </form>
       </div>
 
-      {/* Goal Modal (Assign Tasks modal pre-populated with synthesis) */}
+      {/* Goal Modal */}
       {showGoalModal && (
         <div style={{
           position: 'fixed',
@@ -1271,9 +1479,8 @@ export default function BoardroomPage() {
                 />
               </div>
 
-              {/* Readonly preview of Synthesis */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <label style={{ fontSize: '0.8125rem', color: 'var(--muted)', fontWeight: 500 }}>Synthesis Context (Will be set as Goal Description)</label>
+                <label style={{ fontSize: '0.8125rem', color: 'var(--muted)', fontWeight: 500 }}>Synthesis Context</label>
                 <div style={{
                   maxHeight: '120px',
                   overflowY: 'auto',

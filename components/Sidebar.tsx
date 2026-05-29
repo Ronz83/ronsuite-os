@@ -12,6 +12,7 @@ const NAV = [
   { href: '/goals', icon: '🎯', label: 'Goals' },
   { href: '/board', icon: '📋', label: 'Board' },
   { href: '/memory', icon: '🧠', label: 'Memory' },
+  { href: '/settings', icon: '⚙️', label: 'Settings' },
 ];
 
 export function Sidebar() {
