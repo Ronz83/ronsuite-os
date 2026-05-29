@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Sparkles, Plus, AlertCircle, RefreshCw } from 'lucide-react';
+import { Send, Sparkles, Plus, AlertCircle, RefreshCw, User } from 'lucide-react';
 
 interface Agent {
   id: string;
@@ -18,31 +18,42 @@ interface Project {
   slug: string;
 }
 
+interface BoardroomTurn {
+  id: string;
+  user_message: string;
+  directed_to: string | null;
+  responses: Record<string, string>; // agent name -> response text
+  synthesis?: string | null;
+}
+
 export default function BoardroomPage() {
   const [input, setInput] = useState('');
   const [directedTo, setDirectedTo] = useState<'All' | 'Antigravity' | 'Codex' | 'Claude Code'>('All');
   const [streaming, setStreaming] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   
-  // Responses state
-  const [responses, setResponses] = useState<Record<string, string>>({
+  // Persistent meeting turns thread
+  const [turns, setTurns] = useState<BoardroomTurn[]>([]);
+
+  // Current active/streaming turn states
+  const [currentTurnUserMessage, setCurrentTurnUserMessage] = useState('');
+  const [currentTurnDirectedTo, setCurrentTurnDirectedTo] = useState<string | null>(null);
+  const [currentTurnResponses, setCurrentTurnResponses] = useState<Record<string, string>>({
+    'Antigravity': '',
+    'Codex': '',
+    'Claude Code': '',
+  });
+  const [currentTurnErrors, setCurrentTurnErrors] = useState<Record<string, string>>({
     'Antigravity': '',
     'Codex': '',
     'Claude Code': '',
   });
 
-  // Errors state
-  const [errors, setErrors] = useState<Record<string, string>>({
-    'Antigravity': '',
-    'Codex': '',
-    'Claude Code': '',
-  });
-
-  // Mobile layout state
+  // Mobile layout active tab for the streaming turn
   const [activeTab, setActiveTab] = useState<'Antigravity' | 'Codex' | 'Claude Code'>('Antigravity');
   const [isMobile, setIsMobile] = useState(false);
 
-  // Synthesis state
+  // Synthesis state for the current or selected turn
   const [synthesis, setSynthesis] = useState('');
   const [synthesisStreaming, setSynthesisStreaming] = useState(false);
 
@@ -61,6 +72,7 @@ export default function BoardroomPage() {
   const supabase = createClient();
 
   // Scroll references
+  const threadEndRef = useRef<HTMLDivElement>(null);
   const antigravityScrollRef = useRef<HTMLDivElement>(null);
   const codexScrollRef = useRef<HTMLDivElement>(null);
   const claudeScrollRef = useRef<HTMLDivElement>(null);
@@ -88,18 +100,65 @@ export default function BoardroomPage() {
     loadData();
   }, [supabase]);
 
-  // Scroll to bottom on streaming responses
+  // Load latest boardroom session and its turns on mount
+  useEffect(() => {
+    async function loadLatestSession() {
+      const { data: session } = await supabase
+        .from('boardroom_sessions')
+        .select('id')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (session) {
+        setSessionId(session.id);
+        
+        const { data: turnsData } = await supabase
+          .from('boardroom_turns')
+          .select('*')
+          .eq('session_id', session.id)
+          .order('created_at', { ascending: true });
+
+        if (turnsData) {
+          const loadedTurns: BoardroomTurn[] = turnsData.map(t => {
+            const resMap: Record<string, string> = {};
+            if (Array.isArray(t.responses)) {
+              t.responses.forEach((r: any) => {
+                resMap[r.agent] = r.text;
+              });
+            }
+            return {
+              id: t.id,
+              user_message: t.user_message,
+              directed_to: t.directed_to,
+              responses: resMap,
+              synthesis: t.synthesis
+            };
+          });
+          setTurns(loadedTurns);
+        }
+      }
+    }
+    loadLatestSession();
+  }, [supabase]);
+
+  // Scroll current streaming columns
   useEffect(() => {
     if (antigravityScrollRef.current) antigravityScrollRef.current.scrollTop = antigravityScrollRef.current.scrollHeight;
-  }, [responses['Antigravity']]);
+  }, [currentTurnResponses['Antigravity']]);
 
   useEffect(() => {
     if (codexScrollRef.current) codexScrollRef.current.scrollTop = codexScrollRef.current.scrollHeight;
-  }, [responses['Codex']]);
+  }, [currentTurnResponses['Codex']]);
 
   useEffect(() => {
     if (claudeScrollRef.current) claudeScrollRef.current.scrollTop = claudeScrollRef.current.scrollHeight;
-  }, [responses['Claude Code']]);
+  }, [currentTurnResponses['Claude Code']]);
+
+  // Scroll main thread to bottom
+  useEffect(() => {
+    threadEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [turns, currentTurnUserMessage, streaming]);
 
   useEffect(() => {
     if (synthesisScrollRef.current) synthesisScrollRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -110,35 +169,47 @@ export default function BoardroomPage() {
     e.preventDefault();
     if (!input.trim() || streaming) return;
 
-    // Reset columns we expect to write to
+    const userMsg = input.trim();
     const targetAgents = directedTo === 'All' ? ['Antigravity', 'Codex', 'Claude Code'] : [directedTo];
-    
-    setResponses(prev => {
-      const next = { ...prev };
-      targetAgents.forEach(agt => {
-        next[agt] = '';
-      });
-      return next;
-    });
+    const targetVal = directedTo === 'All' ? null : directedTo;
 
-    setErrors(prev => {
-      const next = { ...prev };
-      targetAgents.forEach(agt => {
-        next[agt] = '';
-      });
-      return next;
+    // Reset current turn streaming states
+    setCurrentTurnUserMessage(userMsg);
+    setCurrentTurnDirectedTo(targetVal);
+    
+    // Default tabs to the directed agent if only targeting one on mobile
+    if (directedTo !== 'All') {
+      setActiveTab(directedTo);
+    }
+
+    setCurrentTurnResponses({
+      'Antigravity': '',
+      'Codex': '',
+      'Claude Code': '',
+    });
+    setCurrentTurnErrors({
+      'Antigravity': '',
+      'Codex': '',
+      'Claude Code': '',
     });
 
     setSynthesis('');
     setStreaming(true);
+    setInput('');
+
+    console.log("[Boardroom UI] Sending payload:", {
+      message: userMsg,
+      directed_to: targetVal,
+      session_id: sessionId
+    });
 
     try {
       const res = await fetch('/api/boardroom', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: input.trim(),
-          directed_to: directedTo === 'All' ? null : directedTo,
+          message: userMsg,
+          directed_to: targetVal,
           session_id: sessionId,
         }),
       });
@@ -149,8 +220,7 @@ export default function BoardroomPage() {
       const decoder = new TextDecoder();
       let buffer = '';
 
-      // Clear input
-      setInput('');
+      let activeSessionId = sessionId;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -166,14 +236,15 @@ export default function BoardroomPage() {
             const event = JSON.parse(line.slice(6));
             if (event.type === 'session_init') {
               setSessionId(event.sessionId);
+              activeSessionId = event.sessionId;
             } else if (event.type === 'text') {
-              setResponses(prev => ({
+              setCurrentTurnResponses(prev => ({
                 ...prev,
                 [event.agent]: (prev[event.agent] || '') + event.text,
               }));
             } else if (event.type === 'error') {
               if (event.agent) {
-                setErrors(prev => ({
+                setCurrentTurnErrors(prev => ({
                   ...prev,
                   [event.agent]: event.message,
                 }));
@@ -181,7 +252,31 @@ export default function BoardroomPage() {
                 alert(`Error: ${event.message}`);
               }
             } else if (event.type === 'turn_complete') {
-              // Complete turn
+              // Final turn responses map
+              const turnResMap: Record<string, string> = {};
+              if (Array.isArray(event.responses)) {
+                event.responses.forEach((r: any) => {
+                  turnResMap[r.agent] = r.text;
+                });
+              } else {
+                targetAgents.forEach(agt => {
+                  turnResMap[agt] = currentTurnResponses[agt];
+                });
+              }
+
+              // Append completed turn to persistent thread
+              setTurns(prev => [...prev, {
+                id: event.turnId || crypto.randomUUID(),
+                user_message: userMsg,
+                directed_to: targetVal,
+                responses: turnResMap,
+                synthesis: null
+              }]);
+
+              // Reset current streaming turn states
+              setCurrentTurnUserMessage('');
+              setCurrentTurnDirectedTo(null);
+              setCurrentTurnResponses({ 'Antigravity': '', 'Codex': '', 'Claude Code': '' });
             }
           } catch (e) {
             // Ignore parse errors
@@ -196,9 +291,9 @@ export default function BoardroomPage() {
     }
   }
 
-  // Synthesize answers with Hermes
+  // Synthesize answers with Hermes for the last turn in thread
   async function handleSynthesize() {
-    if (synthesisStreaming) return;
+    if (synthesisStreaming || turns.length === 0) return;
     setSynthesis('');
     setSynthesisStreaming(true);
 
@@ -209,10 +304,12 @@ export default function BoardroomPage() {
       return;
     }
 
+    const lastTurn = turns[turns.length - 1];
+
     const synthesisPrompt = `You are Hermes, the master orchestrator. Please synthesize the following boardroom discussion into a single, unified, actionable recommendation. Ensure you pull from all three heads:\n\n` +
-      `Creative Director (Antigravity): "${responses['Antigravity'] || '(No response)'}"\n\n` +
-      `Engineering Lead (Codex): "${responses['Codex'] || '(No response)'}"\n\n` +
-      `Architecture Lead (Claude Code): "${responses['Claude Code'] || '(No response)'}"\n\n` +
+      `Creative Director (Antigravity): "${lastTurn.responses['Antigravity'] || '(No response)'}"\n\n` +
+      `Engineering Lead (Codex): "${lastTurn.responses['Codex'] || '(No response)'}"\n\n` +
+      `Architecture Lead (Claude Code): "${lastTurn.responses['Claude Code'] || '(No response)'}"\n\n` +
       `Provide a clear summary, key technical decisions, and structured next steps.`;
 
     try {
@@ -230,6 +327,7 @@ export default function BoardroomPage() {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let fullSynthesis = '';
 
       while (true) {
         const { done, value } = await reader.read();
@@ -245,10 +343,21 @@ export default function BoardroomPage() {
             const event = JSON.parse(line.slice(6));
             if (event.type === 'text') {
               setSynthesis(prev => prev + event.content);
+              fullSynthesis += event.content;
             }
           } catch {}
         }
       }
+
+      // Update state in turns array
+      setTurns(prev => prev.map((t, idx) => idx === prev.length - 1 ? { ...t, synthesis: fullSynthesis } : t));
+
+      // Save synthesis back to database turn row
+      await supabase
+        .from('boardroom_turns')
+        .update({ synthesis: fullSynthesis })
+        .eq('id', lastTurn.id);
+
     } catch (err) {
       console.error(err);
       alert('Failed to synthesize');
@@ -260,13 +369,13 @@ export default function BoardroomPage() {
   // Save new goal populated with synthesis
   async function handleCreateGoal(e: React.FormEvent) {
     e.preventDefault();
-    if (!goalTitle.trim() || !goalProjectId || !goalAgentId) return;
+    if (!cleanSynthesisText || !goalTitle.trim() || !goalProjectId || !goalAgentId) return;
 
     setGoalSaving(true);
     try {
       const { error } = await supabase.from('goals').insert({
         title: goalTitle.trim(),
-        description: synthesis,
+        description: cleanSynthesisText,
         project_id: goalProjectId,
         agent_id: goalAgentId,
         turn_budget: goalTurnBudget,
@@ -290,25 +399,41 @@ export default function BoardroomPage() {
   }
 
   // Pre-fill goal details before showing modal
+  const lastTurnWithSynthesis = [...turns].reverse().find(t => t.synthesis);
+  const cleanSynthesisText = lastTurnWithSynthesis?.synthesis || '';
+
   function openAssignTasksModal() {
-    // Generate simple title from synthesis first line or static
-    const cleanTitle = synthesis
-      ? synthesis.split('\n')[0].replace(/[#*`]/g, '').trim().substring(0, 80)
-      : 'Execute Boardroom synthesis';
+    if (!cleanSynthesisText) return;
+    const cleanTitle = cleanSynthesisText.split('\n')[0].replace(/[#*`]/g, '').trim().substring(0, 80) || 'Execute Boardroom synthesis';
     setGoalTitle(cleanTitle);
     setShowGoalModal(true);
   }
 
   // Clear session to start fresh
-  function handleNewSession() {
+  async function handleNewSession() {
     if (streaming || synthesisStreaming) return;
-    setSessionId(null);
-    setResponses({
+    
+    // Insert fresh cloud session
+    const { data: newSession } = await supabase
+      .from('boardroom_sessions')
+      .insert({ mode: 'cloud' })
+      .select()
+      .single();
+
+    if (newSession) {
+      setSessionId(newSession.id);
+    } else {
+      setSessionId(null);
+    }
+    
+    setTurns([]);
+    setCurrentTurnUserMessage('');
+    setCurrentTurnResponses({
       'Antigravity': '',
       'Codex': '',
       'Claude Code': '',
     });
-    setErrors({
+    setCurrentTurnErrors({
       'Antigravity': '',
       'Codex': '',
       'Claude Code': '',
@@ -316,8 +441,27 @@ export default function BoardroomPage() {
     setSynthesis('');
   }
 
-  // Helper check if responses exist
-  const hasResponses = responses['Antigravity'] || responses['Codex'] || responses['Claude Code'];
+  // Helper check if last turn has response
+  const hasLastTurnResponses = turns.length > 0;
+
+  // Agent colors mapping
+  const agentColors: Record<string, string> = {
+    'Antigravity': '#a855f7',
+    'Codex': '#22c55e',
+    'Claude Code': '#f97316',
+  };
+
+  const agentBgs: Record<string, string> = {
+    'Antigravity': 'rgba(168, 85, 247, 0.08)',
+    'Codex': 'rgba(34, 197, 94, 0.08)',
+    'Claude Code': 'rgba(249, 115, 22, 0.08)',
+  };
+
+  const agentRoles: Record<string, string> = {
+    'Antigravity': 'Creative Director',
+    'Codex': 'Engineering Lead',
+    'Claude Code': 'Architecture Lead',
+  };
 
   return (
     <div style={{
@@ -338,6 +482,7 @@ export default function BoardroomPage() {
         background: 'var(--surface)',
         borderBottom: '1px solid var(--border)',
         flexShrink: 0,
+        zIndex: 10,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <div>
@@ -361,7 +506,7 @@ export default function BoardroomPage() {
               width: '6px',
               height: '6px',
               borderRadius: '50%',
-              background: '#94a3b8', // Gray dot for Cloud Mode
+              background: '#94a3b8',
             }} />
             <span style={{ color: 'var(--muted)' }}>Cloud Mode</span>
           </div>
@@ -393,276 +538,408 @@ export default function BoardroomPage() {
         </div>
       </header>
 
-      {/* Main Boardroom Area */}
+      {/* Main Boardroom Thread Area */}
       <div style={{
         flex: 1,
         overflowY: 'auto',
-        padding: '1.5rem',
+        padding: '2rem 1.5rem',
         display: 'flex',
         flexDirection: 'column',
-        gap: '1.5rem',
-        paddingBottom: '8.5rem', // space for input bar
+        gap: '2.5rem',
+        paddingBottom: '9.5rem', // space for input bar
       }}>
-        {/* Desktop Layout - 3 columns */}
-        {!isMobile ? (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: '1rem',
-            height: '100%',
-            minHeight: '400px',
-          }}>
-            {/* Column 1: Antigravity */}
+        {/* Render Previous Thread Turns */}
+        {turns.map((turn, index) => (
+          <div key={turn.id || index} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            
+            {/* User Message card */}
             <div style={{
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderRadius: '16px',
               display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
+              gap: '0.75rem',
+              alignItems: 'flex-start',
+              maxWidth: '85%',
+              alignSelf: 'flex-start',
             }}>
               <div style={{
-                padding: '1rem',
-                borderBottom: '1px solid var(--border)',
-                background: 'rgba(168, 85, 247, 0.08)',
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                background: 'var(--accent)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.75rem',
+                justifyContent: 'center',
+                color: 'var(--text)',
+                fontSize: '0.875rem',
+                fontWeight: 600,
+                flexShrink: 0,
               }}>
-                <div style={{
-                  width: '10px',
-                  height: '10px',
-                  borderRadius: '50%',
-                  background: '#a855f7',
-                }} />
-                <div>
-                  <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--text)' }}>Antigravity</h3>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Creative Director</p>
-                </div>
+                <User size={16} />
               </div>
-              <div
-                ref={antigravityScrollRef}
-                style={{
-                  flex: 1,
-                  padding: '1.25rem',
-                  overflowY: 'auto',
-                  fontSize: '0.875rem',
-                  lineHeight: 1.6,
-                  whiteSpace: 'pre-wrap',
-                  color: 'rgba(248, 250, 252, 0.9)',
-                }}
-              >
-                {responses['Antigravity']}
-                {errors['Antigravity'] && (
-                  <div style={{ display: 'flex', gap: '0.5rem', color: 'var(--danger)', background: 'rgba(244, 63, 94, 0.1)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(244,63,94,0.2)', fontSize: '0.8125rem' }}>
-                    <AlertCircle size={16} />
-                    <span>{errors['Antigravity']}</span>
-                  </div>
-                )}
-                {!responses['Antigravity'] && !errors['Antigravity'] && (
-                  <div style={{ color: 'var(--muted)', fontStyle: 'italic', textAlign: 'center', marginTop: '2rem' }}>
-                    Awaiting input...
-                  </div>
-                )}
+              <div style={{
+                background: 'var(--surface-2)',
+                border: '1px solid var(--border)',
+                borderRadius: '12px',
+                padding: '0.875rem 1.25rem',
+                fontSize: '0.9375rem',
+                lineHeight: 1.5,
+              }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--muted)', fontWeight: 600, marginBottom: '0.25rem' }}>
+                  Ronald {turn.directed_to && <span style={{ color: agentColors[turn.directed_to] || 'var(--accent)' }}>&gt; @{turn.directed_to}</span>}
+                </div>
+                <div>{turn.user_message}</div>
               </div>
             </div>
 
-            {/* Column 2: Codex */}
-            <div style={{
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderRadius: '16px',
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-            }}>
+            {/* Agent Responses Row */}
+            {turn.directed_to ? (
+              // Directed layout - Single card
               <div style={{
-                padding: '1rem',
-                borderBottom: '1px solid var(--border)',
-                background: 'rgba(34, 197, 94, 0.08)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.75rem',
+                background: 'var(--surface)',
+                border: `1px solid ${agentColors[turn.directed_to]}33`,
+                borderRadius: '16px',
+                overflow: 'hidden',
+                maxWidth: '80%',
+                alignSelf: 'flex-end',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
               }}>
                 <div style={{
-                  width: '10px',
-                  height: '10px',
-                  borderRadius: '50%',
-                  background: '#22c55e',
-                }} />
-                <div>
-                  <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--text)' }}>Codex</h3>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Engineering Lead</p>
+                  padding: '0.75rem 1.25rem',
+                  borderBottom: '1px solid var(--border)',
+                  background: agentBgs[turn.directed_to],
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                }}>
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: agentColors[turn.directed_to] }} />
+                  <div>
+                    <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{turn.directed_to}</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--muted)', marginLeft: '0.5rem' }}>{agentRoles[turn.directed_to]}</span>
+                  </div>
                 </div>
-              </div>
-              <div
-                ref={codexScrollRef}
-                style={{
-                  flex: 1,
+                <div style={{
                   padding: '1.25rem',
-                  overflowY: 'auto',
                   fontSize: '0.875rem',
                   lineHeight: 1.6,
                   whiteSpace: 'pre-wrap',
-                  color: 'rgba(248, 250, 252, 0.9)',
-                }}
-              >
-                {responses['Codex']}
-                {errors['Codex'] && (
-                  <div style={{ display: 'flex', gap: '0.5rem', color: 'var(--danger)', background: 'rgba(244, 63, 94, 0.1)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(244,63,94,0.2)', fontSize: '0.8125rem' }}>
-                    <AlertCircle size={16} />
-                    <span>{errors['Codex']}</span>
-                  </div>
-                )}
-                {!responses['Codex'] && !errors['Codex'] && (
-                  <div style={{ color: 'var(--muted)', fontStyle: 'italic', textAlign: 'center', marginTop: '2rem' }}>
-                    Awaiting input...
-                  </div>
-                )}
+                  color: 'rgba(248, 250, 252, 0.95)',
+                }}>
+                  {turn.responses[turn.directed_to]}
+                </div>
               </div>
-            </div>
+            ) : (
+              // All layout - Three Columns (Desktop) or stacked (Mobile)
+              !isMobile ? (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: '1rem',
+                  minHeight: '200px',
+                }}>
+                  {Object.keys(agentColors).map(agt => (
+                    <div key={agt} style={{
+                      background: 'var(--surface)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '16px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      overflow: 'hidden',
+                    }}>
+                      <div style={{
+                        padding: '0.75rem 1rem',
+                        borderBottom: '1px solid var(--border)',
+                        background: agentBgs[agt],
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                      }}>
+                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: agentColors[agt] }} />
+                        <div>
+                          <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{agt}</span>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--muted)', marginLeft: '0.5rem' }}>{agentRoles[agt]}</span>
+                        </div>
+                      </div>
+                      <div style={{
+                        padding: '1rem',
+                        fontSize: '0.8125rem',
+                        lineHeight: 1.6,
+                        whiteSpace: 'pre-wrap',
+                        overflowY: 'auto',
+                        color: 'rgba(248, 250, 252, 0.9)',
+                      }}>
+                        {turn.responses[agt]}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                // Mobile stacked layout for Turn
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {Object.keys(agentColors).map(agt => (
+                    <div key={agt} style={{
+                      background: 'var(--surface)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '12px',
+                      overflow: 'hidden',
+                    }}>
+                      <div style={{
+                        padding: '0.5rem 0.875rem',
+                        borderBottom: '1px solid var(--border)',
+                        background: agentBgs[agt],
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: agentColors[agt] }} />
+                          <span style={{ fontSize: '0.8125rem', fontWeight: 600 }}>{agt}</span>
+                        </div>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>{agentRoles[agt]}</span>
+                      </div>
+                      <div style={{
+                        padding: '0.875rem',
+                        fontSize: '0.8125rem',
+                        lineHeight: 1.5,
+                        whiteSpace: 'pre-wrap',
+                        color: 'rgba(248, 250, 252, 0.9)',
+                      }}>
+                        {turn.responses[agt]}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
 
-            {/* Column 3: Claude Code */}
-            <div style={{
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderRadius: '16px',
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-            }}>
+            {/* Synthesis result if exists */}
+            {turn.synthesis && (
               <div style={{
-                padding: '1rem',
-                borderBottom: '1px solid var(--border)',
-                background: 'rgba(249, 115, 22, 0.08)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.75rem',
+                background: 'var(--surface)',
+                border: '1px solid rgba(245, 158, 11, 0.2)',
+                borderRadius: '16px',
+                padding: '1.25rem 1.5rem',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+                maxWidth: '90%',
+                alignSelf: 'center',
               }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', color: '#f59e0b' }}>
+                  <Sparkles size={14} />
+                  <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>Hermes Recommendation Summary</span>
+                </div>
                 <div style={{
-                  width: '10px',
-                  height: '10px',
-                  borderRadius: '50%',
-                  background: '#f97316',
-                }} />
-                <div>
-                  <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--text)' }}>Claude Code</h3>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Architecture Lead</p>
+                  fontSize: '0.875rem',
+                  lineHeight: 1.55,
+                  color: 'rgba(248, 250, 252, 0.85)',
+                  whiteSpace: 'pre-wrap',
+                }}>
+                  {turn.synthesis}
                 </div>
               </div>
-              <div
-                ref={claudeScrollRef}
-                style={{
-                  flex: 1,
-                  padding: '1.25rem',
-                  overflowY: 'auto',
-                  fontSize: '0.875rem',
-                  lineHeight: 1.6,
-                  whiteSpace: 'pre-wrap',
-                  color: 'rgba(248, 250, 252, 0.9)',
-                }}
-              >
-                {responses['Claude Code']}
-                {errors['Claude Code'] && (
-                  <div style={{ display: 'flex', gap: '0.5rem', color: 'var(--danger)', background: 'rgba(244, 63, 94, 0.1)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(244,63,94,0.2)', fontSize: '0.8125rem' }}>
-                    <AlertCircle size={16} />
-                    <span>{errors['Claude Code']}</span>
-                  </div>
-                )}
-                {!responses['Claude Code'] && !errors['Claude Code'] && (
-                  <div style={{ color: 'var(--muted)', fontStyle: 'italic', textAlign: 'center', marginTop: '2rem' }}>
-                    Awaiting input...
-                  </div>
-                )}
-              </div>
-            </div>
+            )}
           </div>
-        ) : (
-          /* Mobile Swipe Tabs Layout */
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            background: 'var(--surface)',
-            border: '1px solid var(--border)',
-            borderRadius: '16px',
-            overflow: 'hidden',
-            minHeight: '350px',
-          }}>
-            {/* Tab Selectors */}
+        ))}
+
+        {/* Current Streaming Turn */}
+        {currentTurnUserMessage && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            {/* Streaming message */}
             <div style={{
               display: 'flex',
-              background: 'var(--surface-2)',
-              borderBottom: '1px solid var(--border)',
+              gap: '0.75rem',
+              alignItems: 'flex-start',
+              maxWidth: '85%',
+              alignSelf: 'flex-start',
             }}>
-              {(['Antigravity', 'Codex', 'Claude Code'] as const).map(tab => {
-                const colors: Record<string, string> = {
-                  'Antigravity': '#a855f7',
-                  'Codex': '#22c55e',
-                  'Claude Code': '#f97316',
-                };
-                const active = activeTab === tab;
-                return (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    style={{
-                      flex: 1,
-                      padding: '0.875rem 0.5rem',
-                      fontSize: '0.8125rem',
-                      fontWeight: 600,
-                      color: active ? 'var(--text)' : 'var(--muted)',
-                      border: 'none',
-                      borderBottom: active ? `3px solid ${colors[tab]}` : '3px solid transparent',
-                      background: active ? 'rgba(255,255,255,0.02)' : 'transparent',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    {tab}
-                  </button>
-                );
-              })}
+              <div style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                background: 'var(--accent)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--text)',
+                fontSize: '0.875rem',
+                fontWeight: 600,
+                flexShrink: 0,
+              }}>
+                <User size={16} />
+              </div>
+              <div style={{
+                background: 'var(--surface-2)',
+                border: '1px solid var(--border)',
+                borderRadius: '12px',
+                padding: '0.875rem 1.25rem',
+                fontSize: '0.9375rem',
+                lineHeight: 1.5,
+              }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--muted)', fontWeight: 600, marginBottom: '0.25rem' }}>
+                  Ronald {currentTurnDirectedTo && <span style={{ color: agentColors[currentTurnDirectedTo] || 'var(--accent)' }}>&gt; @{currentTurnDirectedTo}</span>}
+                </div>
+                <div>{currentTurnUserMessage}</div>
+              </div>
             </div>
 
-            {/* Swipeable / Switchable Content container */}
-            <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column' }}>
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activeTab}
-                  initial={{ opacity: 0, x: 15 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -15 }}
-                  transition={{ duration: 0.15 }}
-                  style={{
-                    flex: 1,
-                    padding: '1.25rem',
-                    overflowY: 'auto',
-                    fontSize: '0.875rem',
-                    lineHeight: 1.6,
-                    whiteSpace: 'pre-wrap',
-                    color: 'rgba(248, 250, 252, 0.9)',
-                  }}
-                >
-                  {responses[activeTab]}
-                  {errors[activeTab] && (
+            {/* Streaming columns */}
+            {currentTurnDirectedTo ? (
+              // Single targeted agent stream
+              <div style={{
+                background: 'var(--surface)',
+                border: `1px solid ${agentColors[currentTurnDirectedTo]}55`,
+                borderRadius: '16px',
+                overflow: 'hidden',
+                maxWidth: '80%',
+                alignSelf: 'flex-end',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+              }}>
+                <div style={{
+                  padding: '0.75rem 1.25rem',
+                  borderBottom: '1px solid var(--border)',
+                  background: agentBgs[currentTurnDirectedTo],
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                }}>
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: agentColors[currentTurnDirectedTo] }} />
+                  <div>
+                    <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{currentTurnDirectedTo}</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--muted)', marginLeft: '0.5rem' }}>{agentRoles[currentTurnDirectedTo]}</span>
+                  </div>
+                </div>
+                <div style={{
+                  padding: '1.25rem',
+                  fontSize: '0.875rem',
+                  lineHeight: 1.6,
+                  whiteSpace: 'pre-wrap',
+                  color: 'rgba(248, 250, 252, 0.95)',
+                }}>
+                  {currentTurnResponses[currentTurnDirectedTo]}
+                  {currentTurnErrors[currentTurnDirectedTo] && (
                     <div style={{ display: 'flex', gap: '0.5rem', color: 'var(--danger)', background: 'rgba(244, 63, 94, 0.1)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(244,63,94,0.2)', fontSize: '0.8125rem' }}>
                       <AlertCircle size={16} />
-                      <span>{errors[activeTab]}</span>
+                      <span>{currentTurnErrors[currentTurnDirectedTo]}</span>
                     </div>
                   )}
-                  {!responses[activeTab] && !errors[activeTab] && (
-                    <div style={{ color: 'var(--muted)', fontStyle: 'italic', textAlign: 'center', marginTop: '2rem' }}>
-                      Awaiting input for {activeTab}...
-                    </div>
+                  {!currentTurnResponses[currentTurnDirectedTo] && !currentTurnErrors[currentTurnDirectedTo] && (
+                    <span style={{ color: 'var(--muted)', fontStyle: 'italic' }}>Streaming...</span>
                   )}
-                </motion.div>
-              </AnimatePresence>
-            </div>
+                </div>
+              </div>
+            ) : (
+              // All agents parallel streams
+              !isMobile ? (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: '1rem',
+                  minHeight: '200px',
+                }}>
+                  {Object.keys(agentColors).map(agt => (
+                    <div key={agt} style={{
+                      background: 'var(--surface)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '16px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      overflow: 'hidden',
+                    }}>
+                      <div style={{
+                        padding: '0.75rem 1rem',
+                        borderBottom: '1px solid var(--border)',
+                        background: agentBgs[agt],
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                      }}>
+                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: agentColors[agt] }} />
+                        <div>
+                          <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{agt}</span>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--muted)', marginLeft: '0.5rem' }}>{agentRoles[agt]}</span>
+                        </div>
+                      </div>
+                      <div
+                        ref={
+                          agt === 'Antigravity' ? antigravityScrollRef :
+                          agt === 'Codex' ? codexScrollRef :
+                          claudeScrollRef
+                        }
+                        style={{
+                          padding: '1rem',
+                          fontSize: '0.8125rem',
+                          lineHeight: 1.6,
+                          whiteSpace: 'pre-wrap',
+                          overflowY: 'auto',
+                          color: 'rgba(248, 250, 252, 0.9)',
+                        }}
+                      >
+                        {currentTurnResponses[agt]}
+                        {currentTurnErrors[agt] && (
+                          <div style={{ display: 'flex', gap: '0.5rem', color: 'var(--danger)', background: 'rgba(244, 63, 94, 0.1)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(244,63,94,0.2)', fontSize: '0.8125rem', marginTop: '0.5rem' }}>
+                            <AlertCircle size={14} />
+                            <span>{currentTurnErrors[agt]}</span>
+                          </div>
+                        )}
+                        {!currentTurnResponses[agt] && !currentTurnErrors[agt] && (
+                          <span style={{ color: 'var(--muted)', fontStyle: 'italic' }}>Streaming...</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                // Mobile tabs stream layout
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '16px',
+                  overflow: 'hidden',
+                  minHeight: '300px',
+                }}>
+                  <div style={{ display: 'flex', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
+                    {Object.keys(agentColors).map(agt => {
+                      const active = activeTab === agt;
+                      return (
+                        <button
+                          key={agt}
+                          onClick={() => setActiveTab(agt as any)}
+                          style={{
+                            flex: 1,
+                            padding: '0.875rem 0.5rem',
+                            fontSize: '0.8125rem',
+                            fontWeight: 600,
+                            color: active ? 'var(--text)' : 'var(--muted)',
+                            border: 'none',
+                            borderBottom: active ? `3px solid ${agentColors[agt]}` : '3px solid transparent',
+                            background: active ? 'rgba(255,255,255,0.02)' : 'transparent',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {agt}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ flex: 1, padding: '1rem', fontSize: '0.8125rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', color: 'rgba(248, 250, 252, 0.9)' }}>
+                    {currentTurnResponses[activeTab]}
+                    {currentTurnErrors[activeTab] && (
+                      <div style={{ display: 'flex', gap: '0.5rem', color: 'var(--danger)', background: 'rgba(244, 63, 94, 0.1)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(244,63,94,0.2)', fontSize: '0.8125rem', marginTop: '0.5rem' }}>
+                        <AlertCircle size={14} />
+                        <span>{currentTurnErrors[activeTab]}</span>
+                      </div>
+                    )}
+                    {!currentTurnResponses[activeTab] && !currentTurnErrors[activeTab] && (
+                      <span style={{ color: 'var(--muted)', fontStyle: 'italic' }}>Streaming...</span>
+                    )}
+                  </div>
+                </div>
+              )
+            )}
           </div>
         )}
 
-        {/* Synthesize and Action Buttons */}
-        {hasResponses && !streaming && (
+        {/* Synthesize and Action Buttons for persistent turn context */}
+        {hasLastTurnResponses && !streaming && (
           <div style={{
             display: 'flex',
             flexDirection: 'column',
@@ -692,10 +969,10 @@ export default function BoardroomPage() {
                 }}
               >
                 <Sparkles size={16} />
-                <span>{synthesisStreaming ? 'Synthesizing...' : 'Synthesize Discussion'}</span>
+                <span>{synthesisStreaming ? 'Synthesizing...' : 'Synthesize Last Turn'}</span>
               </button>
 
-              {synthesis && (
+              {cleanSynthesisText && (
                 <button
                   onClick={openAssignTasksModal}
                   style={{
@@ -749,6 +1026,17 @@ export default function BoardroomPage() {
             )}
           </div>
         )}
+
+        {/* Empty state when no turns exist */}
+        {!hasLastTurnResponses && !currentTurnUserMessage && (
+          <div style={{ textAlign: 'center', padding: '6rem 0', color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '16px' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🤝</div>
+            <p style={{ fontWeight: 600, color: 'var(--text)', marginBottom: '0.25rem' }}>No meeting messages yet</p>
+            <p style={{ fontSize: '0.875rem' }}>Direct a question to the department heads below to start the boardroom alignment.</p>
+          </div>
+        )}
+
+        <div ref={threadEndRef} />
       </div>
 
       {/* Shared Input Bar - Sticky at bottom */}
@@ -997,7 +1285,7 @@ export default function BoardroomPage() {
                   color: 'rgba(255,255,255,0.7)',
                   whiteSpace: 'pre-wrap',
                 }}>
-                  {synthesis}
+                  {cleanSynthesisText}
                 </div>
               </div>
 

@@ -91,12 +91,20 @@ export async function POST(req: Request) {
 
       // 4. Determine which agents to execute
       let agentsToRun = agents;
+      console.log("[Boardroom API] Input directed_to:", directed_to);
+      console.log("[Boardroom API] Loaded agents:", agents.map(a => a.name));
+
       if (directed_to) {
-        // Clean directed_to (e.g. '@Antigravity' -> 'Antigravity')
-        const targetName = directed_to.replace(/^@/, '').trim();
-        const matched = agents.filter(a => a.name.toLowerCase() === targetName.toLowerCase());
+        const targetName = directed_to.replace(/^@/, '').trim().toLowerCase();
+        const matched = agents.filter(a => a.name.trim().toLowerCase() === targetName);
+        console.log("[Boardroom API] Matched agent list:", matched.map(a => a.name));
+        
         if (matched.length > 0) {
           agentsToRun = matched;
+        } else {
+          // If a specific agent was requested but not found, only execute empty list or throw
+          console.warn(`[Boardroom API] Agent matching directed_to "${directed_to}" was not found.`);
+          agentsToRun = [];
         }
       }
 
