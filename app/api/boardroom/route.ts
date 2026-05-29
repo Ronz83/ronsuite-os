@@ -2,7 +2,7 @@ import { anthropic, MODEL, MAX_TOKENS } from '@/lib/anthropic';
 import { createServiceClient } from '@/lib/supabase/service';
 import { createClient } from '@/lib/supabase/server';
 import type { MessageParam } from '@anthropic-ai/sdk/resources/messages';
-import { extractAndSaveMemory } from '@/lib/brain';
+import { extractAndSaveMemory, makeSystemPromptDynamic } from '@/lib/brain';
 
 function encode(obj: unknown) {
   return `data: ${JSON.stringify(obj)}\n\n`;
@@ -116,10 +116,11 @@ export async function POST(req: Request) {
           const history = buildHistoryForAgent(pastTurns, agent.name);
           history.push({ role: 'user', content: message });
 
+          const systemPrompt = await makeSystemPromptDynamic(agent.system_prompt, serviceClient);
           const anthropicStream = await anthropic.messages.create({
             model: MODEL,
             max_tokens: MAX_TOKENS,
-            system: agent.system_prompt,
+            system: systemPrompt,
             messages: history,
             stream: true,
           });

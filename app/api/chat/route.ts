@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import type { MessageParam } from '@anthropic-ai/sdk/resources/messages';
 import { sendNotificationToAll } from '@/lib/push';
 
-import { extractAndSaveMemory } from '@/lib/brain';
+import { extractAndSaveMemory, makeSystemPromptDynamic } from '@/lib/brain';
 
 function encode(obj: unknown) {
   return `data: ${JSON.stringify(obj)}\n\n`;
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
       .single();
 
     if (agent) {
-      systemPrompt = agent.system_prompt;
+      systemPrompt = await makeSystemPromptDynamic(agent.system_prompt, serviceClient);
       agentName = agent.name;
       
       // Parse agent tools from JSON database field

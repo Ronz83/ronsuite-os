@@ -101,3 +101,32 @@ Agent: ${agentResponse}`;
     console.error("[Auto-Memory] Error in memory extraction pipeline:", err);
   }
 }
+
+export async function makeSystemPromptDynamic(prompt: string, serviceClient: any) {
+  try {
+    const { data: dbProjects } = await serviceClient
+      .from('projects')
+      .select('name, slug, description')
+      .order('name', { ascending: true });
+
+    const projectsBlock = dbProjects
+      ? dbProjects.map((p: any) => `- ${p.name} (${p.slug}): ${p.description || 'No description'}`).join('\n')
+      : '';
+    const replacement = `Ronald's current projects:\n${projectsBlock}`;
+
+    // Pattern 1: Ronald's active projects:\n- ... (with bullet points)
+    let updated = prompt.replace(/Ronald's active projects:\s*(\n\s*-\s*.*)+/gi, replacement);
+    
+    // Pattern 2: His active projects:\n- ... (with bullet points)
+    updated = updated.replace(/His active projects:\s*(\n\s*-\s*.*)+/gi, replacement);
+    
+    // Pattern 3: Ronald's projects: Caricom Business, ...
+    // We match from "Ronald's projects:" to the end of sentence (e.g. up to a period)
+    updated = updated.replace(/Ronald's projects:[^.]+\./gi, replacement + ".");
+    
+    return updated;
+  } catch (err) {
+    console.error("Error making system prompt dynamic:", err);
+    return prompt;
+  }
+}

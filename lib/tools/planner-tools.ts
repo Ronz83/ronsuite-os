@@ -10,7 +10,6 @@ export const plannerToolDefinitions: Anthropic.Tool[] = [
       properties: {
         project_slug: {
           type: 'string',
-          enum: ['caricom-business', 'ticketflows', 'nws', 'ronsuite-os'],
           description: 'Which project this task belongs to',
         },
         title: {
@@ -53,7 +52,7 @@ export const plannerToolDefinitions: Anthropic.Tool[] = [
       properties: {
         project_slug: {
           type: 'string',
-          enum: ['caricom-business', 'ticketflows', 'nws', 'ronsuite-os', 'all'],
+          description: 'Which project this task belongs to, or "all"',
         },
         status: {
           type: 'string',
@@ -126,7 +125,6 @@ export const plannerToolDefinitions: Anthropic.Tool[] = [
         },
         project_slug: {
           type: 'string',
-          enum: ['caricom-business', 'ticketflows', 'nws', 'ronsuite-os'],
           description: 'Optional project this memory belongs to',
         },
       },
@@ -148,12 +146,19 @@ export async function executeToolCall(
         notes?: string;
         priority?: number;
       };
-      const { data: project } = await supabaseServiceClient
+      
+      const { data: dbProjects } = await supabaseServiceClient
         .from('projects')
-        .select('id')
-        .eq('slug', project_slug)
-        .single();
+        .select('slug, id');
+      
+      const availableSlugs = dbProjects ? dbProjects.map(p => p.slug) : [];
+      if (!availableSlugs.includes(project_slug)) {
+        return JSON.stringify({ error: `Invalid project slug '${project_slug}'. Available projects: ${availableSlugs.join(', ')}` });
+      }
+
+      const project = dbProjects?.find(p => p.slug === project_slug);
       if (!project) return JSON.stringify({ error: `Project '${project_slug}' not found` });
+      
       const { data, error } = await supabaseServiceClient
         .from('tasks')
         .insert({
@@ -187,16 +192,22 @@ export async function executeToolCall(
     }
     case 'list_tasks': {
       const { project_slug, status } = toolInput as { project_slug: string; status?: string };
+      
+      const { data: dbProjects } = await supabaseServiceClient
+        .from('projects')
+        .select('slug, id');
+      
+      const availableSlugs = dbProjects ? dbProjects.map(p => p.slug) : [];
+      if (project_slug !== 'all' && !availableSlugs.includes(project_slug)) {
+        return JSON.stringify({ error: `Invalid project slug '${project_slug}'. Available projects: ${availableSlugs.join(', ')}, all` });
+      }
+
       let query = supabaseServiceClient
         .from('tasks')
         .select('id, title, status, priority, notes, created_at, projects(name, slug)')
         .order('created_at', { ascending: false });
       if (project_slug !== 'all') {
-        const { data: project } = await supabaseServiceClient
-          .from('projects')
-          .select('id')
-          .eq('slug', project_slug)
-          .single();
+        const project = dbProjects?.find(p => p.slug === project_slug);
         if (project) query = query.eq('project_id', project.id);
       }
       if (status && status !== 'all') query = query.eq('status', status);
@@ -279,11 +290,14 @@ export async function executeToolCall(
       try {
         let projectId: string | null = null;
         if (project_slug) {
-          const { data: project } = await supabaseServiceClient
+          const { data: dbProjects } = await supabaseServiceClient
             .from('projects')
-            .select('id')
-            .eq('slug', project_slug)
-            .single();
+            .select('slug, id');
+          const availableSlugs = dbProjects ? dbProjects.map(p => p.slug) : [];
+          if (!availableSlugs.includes(project_slug)) {
+            return JSON.stringify({ error: `Invalid project slug '${project_slug}'. Available projects: ${availableSlugs.join(', ')}` });
+          }
+          const project = dbProjects?.find(p => p.slug === project_slug);
           if (project) {
             projectId = project.id;
           }
