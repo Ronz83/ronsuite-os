@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/server';
 import type { MessageParam } from '@anthropic-ai/sdk/resources/messages';
 import { sendNotificationToAll } from '@/lib/push';
 
+import { extractAndSaveMemory } from '@/lib/brain';
+
 function encode(obj: unknown) {
   return `data: ${JSON.stringify(obj)}\n\n`;
 }
@@ -21,6 +23,7 @@ export async function POST(req: Request) {
   let systemPrompt = "You are a helpful AI assistant.";
   let enabledTools: typeof plannerToolDefinitions = [];
   let agentName = "Assistant";
+  let finalAgentResponseText = "";
 
   // Fetch goal context if goalId is provided
   let activeGoal: any = null;
@@ -213,6 +216,10 @@ export async function POST(req: Request) {
           }
         }
 
+        if (fullText) {
+          finalAgentResponseText = fullText;
+        }
+
         messages.push({
           role: 'assistant',
           content: [
@@ -255,6 +262,13 @@ export async function POST(req: Request) {
         } catch (err) {
           console.error("Error saving session messages:", err);
         }
+      }
+
+      // Extract and save memory in background (non-blocking)
+      if (finalAgentResponseText) {
+        extractAndSaveMemory(message, finalAgentResponseText).catch(e => {
+          console.error("[Auto-Memory] Failed to run extractAndSaveMemory:", e);
+        });
       }
 
       // 1. Send push notification that agent finished response

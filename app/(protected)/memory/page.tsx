@@ -553,9 +553,25 @@ export default function MemoryPage() {
                           )}
 
                           {/* Source badge */}
-                          <span style={{ fontSize: '0.7rem', color: 'var(--muted)', background: 'var(--surface-2)', padding: '2px 8px', borderRadius: '4px' }}>
-                            {memory.source}
-                          </span>
+                          {memory.source === 'agent' ? (
+                            <span
+                              style={{
+                                fontSize: '0.7rem',
+                                fontWeight: 600,
+                                background: 'rgba(16, 185, 129, 0.15)',
+                                color: 'var(--success)',
+                                border: '1px solid rgba(16, 185, 129, 0.3)',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                              }}
+                            >
+                              ⚙️ Auto-saved
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: '0.7rem', color: 'var(--muted)', background: 'var(--surface-2)', padding: '2px 8px', borderRadius: '4px' }}>
+                              {memory.source}
+                            </span>
+                          )}
 
                           <span style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>
                             {new Date(memory.created_at).toLocaleDateString()}

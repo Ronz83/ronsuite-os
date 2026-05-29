@@ -2,6 +2,7 @@ import { anthropic, MODEL, MAX_TOKENS } from '@/lib/anthropic';
 import { createServiceClient } from '@/lib/supabase/service';
 import { createClient } from '@/lib/supabase/server';
 import type { MessageParam } from '@anthropic-ai/sdk/resources/messages';
+import { extractAndSaveMemory } from '@/lib/brain';
 
 function encode(obj: unknown) {
   return `data: ${JSON.stringify(obj)}\n\n`;
@@ -131,6 +132,12 @@ export async function POST(req: Request) {
             }
           }
           write(encode({ type: 'agent_done', agent: agent.name }));
+          
+          if (agentResponseText) {
+            extractAndSaveMemory(message, agentResponseText).catch(e => {
+              console.error(`[Auto-Memory] Failed to extract boardroom memory for ${agent.name}:`, e);
+            });
+          }
         } catch (err) {
           console.error(`Error in stream for agent ${agent.name}:`, err);
           write(encode({ type: 'error', agent: agent.name, message: String(err) }));
