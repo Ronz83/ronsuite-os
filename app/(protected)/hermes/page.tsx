@@ -327,6 +327,7 @@ export default function HermesPage() {
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let accumulatedText = '';
 
       if (reader) {
         while (true) {
@@ -346,12 +347,13 @@ export default function HermesPage() {
                   setCurrentSessionId(parsed.sessionId);
                   fetchSessions();
                 } else if (parsed.type === 'text') {
-                  setStreamText(prev => prev + parsed.text);
+                  accumulatedText += parsed.text;
+                  setStreamText(accumulatedText);
                 } else if (parsed.type === 'approval_created') {
                   fetchApprovals();
                 } else if (parsed.type === 'done') {
                   // Finalize stream
-                  setMessages(prev => [...prev, { role: 'hermes', content: streamText + parsed.text || streamText }]);
+                  setMessages(prev => [...prev, { role: 'hermes', content: accumulatedText }]);
                   setStreamText('');
                   setStreaming(false);
                 } else if (parsed.type === 'error') {

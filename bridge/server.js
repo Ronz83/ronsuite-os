@@ -4,7 +4,6 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const { spawn } = require('child_process');
-const pty = require('node-pty');
 
 const fetch = globalThis.fetch || require('node-fetch');
 
@@ -27,11 +26,14 @@ const OBSIDIAN_VAULT = env.OBSIDIAN_VAULT || 'C:\\Users\\Ronald\\.gemini\\antigr
 // 2. Load keys from Next.js root env file
 const rootEnvPath = path.join(__dirname, '..', '.env.local');
 let supabaseKey = '';
+let anthropicKey = '';
 if (fs.existsSync(rootEnvPath)) {
   const content = fs.readFileSync(rootEnvPath, 'utf8');
   content.split('\n').forEach(line => {
-    const match = line.match(/^SUPABASE_SERVICE_ROLE_KEY=(.*)$/);
-    if (match) supabaseKey = match[1].trim();
+    const matchSupa = line.match(/^SUPABASE_SERVICE_ROLE_KEY=(.*)$/);
+    if (matchSupa) supabaseKey = matchSupa[1].trim();
+    const matchAnth = line.match(/^ANTHROPIC_API_KEY=(.*)$/);
+    if (matchAnth) anthropicKey = matchAnth[1].trim();
   });
 }
 
@@ -106,146 +108,169 @@ wss.on('connection', (ws) => {
   });
 });
 
-function runCodex(content, businessContext, ws) {
-  console.log(`[Bridge] Spawning PTY CLI for Codex`);
-  
-  let fullContent = content;
-  if (businessContext) {
-    fullContent = `[BUSINESS CONTEXT]\n${businessContext}\n\n[USER PROMPT]\n${content}`;
-  }
+async function runCodex(content, businessContext, ws) {
+  console.log(`[Bridge] Running Codex via OpenAI API`);
+  const messages = [];
+  if (businessContext) messages.push({ role: 'system', content: businessContext });
+  messages.push({ role: 'user', content });
 
-  const isWin = process.platform === 'win32';
-  let ptyProcess;
-
-  if (isWin) {
-    const shell = process.env.COMSPEC || 'cmd.exe';
-    ptyProcess = pty.spawn(shell, ['/c', 'codex', fullContent], {
-      name: 'xterm-color',
-      cols: 120,
-      rows: 30,
-      cwd: require('os').homedir(),
-      env: process.env
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({ model: 'o4-mini', messages, stream: true })
     });
-  } else {
-    ptyProcess = pty.spawn('codex', [fullContent], {
-      name: 'xterm-color',
-      cols: 120,
-      rows: 30,
-      cwd: require('os').homedir(),
-      env: process.env
-    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      ws.send(JSON.stringify({ type: 'error', agent: 'codex', message: `OpenAI API error: ${err}` }));
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') continue;
+        try {
+          const parsed = JSON.parse(data);
+          const text = parsed.choices?.[0]?.delta?.content;
+          if (text) ws.send(JSON.stringify({ type: 'text', agent: 'codex', text }));
+        } catch {}
+      }
+    }
+
+    ws.send(JSON.stringify({ type: 'agent_done', agent: 'codex', code: 0 }));
+  } catch (err) {
+    console.error('[Bridge] Codex error:', err);
+    ws.send(JSON.stringify({ type: 'error', agent: 'codex', message: err.message }));
   }
-
-  ptyProcess.onData((data) => {
-    const cleanText = data.replace(/\x1b\[[0-9;]*[mGKHFJ]/g, '').replace(/\r/g, '');
-    ws.send(JSON.stringify({
-      type: 'text',
-      agent: 'codex',
-      text: cleanText
-    }));
-  });
-
-  ptyProcess.onExit(({ exitCode }) => {
-    console.log(`[Bridge] Codex PTY exited with code ${exitCode}`);
-    ws.send(JSON.stringify({
-      type: 'agent_done',
-      agent: 'codex',
-      code: exitCode
-    }));
-  });
 }
 
-function runGemini(content, businessContext, ws) {
-  console.log(`[Bridge] Spawning PTY CLI for Gemini (Antigravity)`);
-  
-  const args = [];
+async function runGemini(content, businessContext, ws) {
+  console.log(`[Bridge] Running Gemini via REST API`);
+  const apiKey = env.GEMINI_API_KEY;
+  const model = 'gemini-2.5-pro';
+
+  const body = {
+    contents: [{ role: 'user', parts: [{ text: content }] }],
+    generationConfig: { maxOutputTokens: 8192 }
+  };
   if (businessContext) {
-    args.push('--system-prompt', businessContext);
-  }
-  args.push(content);
-
-  const isWin = process.platform === 'win32';
-  let ptyProcess;
-
-  if (isWin) {
-    const shell = process.env.COMSPEC || 'cmd.exe';
-    ptyProcess = pty.spawn(shell, ['/c', 'gemini', ...args], {
-      name: 'xterm-color',
-      cols: 120,
-      rows: 30,
-      cwd: require('os').homedir(),
-      env: process.env
-    });
-  } else {
-    ptyProcess = pty.spawn('gemini', args, {
-      name: 'xterm-color',
-      cols: 120,
-      rows: 30,
-      cwd: require('os').homedir(),
-      env: process.env
-    });
+    body.systemInstruction = { parts: [{ text: businessContext }] };
   }
 
-  ptyProcess.onData((data) => {
-    const cleanText = data.replace(/\x1b\[[0-9;]*[mGKHFJ]/g, '').replace(/\r/g, '');
-    ws.send(JSON.stringify({
-      type: 'text',
-      agent: 'antigravity',
-      text: cleanText
-    }));
-  });
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?key=${apiKey}&alt=sse`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      }
+    );
 
-  ptyProcess.onExit(({ exitCode }) => {
-    console.log(`[Bridge] Gemini PTY exited with code ${exitCode}`);
-    ws.send(JSON.stringify({
-      type: 'agent_done',
-      agent: 'antigravity',
-      code: exitCode
-    }));
-  });
+    if (!response.ok) {
+      const err = await response.text();
+      ws.send(JSON.stringify({ type: 'error', agent: 'antigravity', message: `Gemini API error: ${err}` }));
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        try {
+          const parsed = JSON.parse(data);
+          const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text) ws.send(JSON.stringify({ type: 'text', agent: 'antigravity', text }));
+        } catch {}
+      }
+    }
+
+    ws.send(JSON.stringify({ type: 'agent_done', agent: 'antigravity', code: 0 }));
+  } catch (err) {
+    console.error('[Bridge] Gemini error:', err);
+    ws.send(JSON.stringify({ type: 'error', agent: 'antigravity', message: err.message }));
+  }
 }
 
-function runClaude(content, businessContext, ws) {
-  console.log(`[Bridge] Spawning child process CLI for Claude`);
-  const spawnEnv = { ...process.env, NO_COLOR: '1' };
-  
-  const args = [];
-  if (businessContext) {
-    args.push('--system-prompt', businessContext);
+async function runClaude(content, businessContext, ws) {
+  console.log(`[Bridge] Running Claude via Anthropic API`);
+
+  const body = {
+    model: 'claude-opus-4-7',
+    max_tokens: 8096,
+    messages: [{ role: 'user', content }],
+    stream: true
+  };
+  if (businessContext) body.system = businessContext;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': anthropicKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      ws.send(JSON.stringify({ type: 'error', agent: 'claude', message: `Anthropic API error: ${err}` }));
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'text_delta') {
+            ws.send(JSON.stringify({ type: 'text', agent: 'claude', text: parsed.delta.text }));
+          }
+        } catch {}
+      }
+    }
+
+    ws.send(JSON.stringify({ type: 'agent_done', agent: 'claude', code: 0 }));
+  } catch (err) {
+    console.error('[Bridge] Claude error:', err);
+    ws.send(JSON.stringify({ type: 'error', agent: 'claude', message: err.message }));
   }
-  args.push(content);
-
-  const child = spawn('claude', args, { shell: true, env: spawnEnv });
-
-  child.stdout.on('data', (chunk) => {
-    ws.send(JSON.stringify({
-      type: 'text',
-      agent: 'claude',
-      text: chunk.toString()
-    }));
-  });
-
-  child.stderr.on('data', (chunk) => {
-    console.log(`[Bridge][claude stderr] ${chunk.toString().trim()}`);
-  });
-
-  child.on('close', (code) => {
-    console.log(`[Bridge] Claude closed with exit code ${code}`);
-    ws.send(JSON.stringify({
-      type: 'agent_done',
-      agent: 'claude',
-      code
-    }));
-  });
-
-  child.on('error', (err) => {
-    console.error(`[Bridge] Failed to run Claude:`, err);
-    ws.send(JSON.stringify({
-      type: 'error',
-      agent: 'claude',
-      message: `Execution failed: ${err.message}`
-    }));
-  });
 }
 
 // 5. Obsidian Sync Pipeline on Startup
