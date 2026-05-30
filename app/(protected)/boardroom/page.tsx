@@ -24,6 +24,7 @@ interface BoardroomTurn {
   directed_to: string | null;
   responses: Record<string, string>; // agent name -> response text
   synthesis?: string | null;
+  reactions?: Record<string, string>; // Phase 2 cross-agent reactions (not persisted to DB)
 }
 
 export default function BoardroomPage() {
@@ -52,6 +53,14 @@ export default function BoardroomPage() {
     'Codex': '',
     'Claude Code': '',
   });
+
+  // Phase 2 cross-agent reaction state
+  const [currentTurnReactions, setCurrentTurnReactions] = useState<Record<string, string>>({
+    'Antigravity': '',
+    'Codex': '',
+    'Claude Code': '',
+  });
+  const [phase2Active, setPhase2Active] = useState(false);
 
   // Mobile layout active tab for the streaming turn
   const [activeTab, setActiveTab] = useState<'Antigravity' | 'Codex' | 'Claude Code'>('Antigravity');
@@ -261,11 +270,17 @@ export default function BoardroomPage() {
       'Codex': '',
       'Claude Code': '',
     });
+    setCurrentTurnReactions({
+      'Antigravity': '',
+      'Codex': '',
+      'Claude Code': '',
+    });
     setCurrentTurnErrors({
       'Antigravity': '',
       'Codex': '',
       'Claude Code': '',
     });
+    setPhase2Active(false);
 
     setSynthesis('');
     setStreaming(true);
@@ -307,7 +322,13 @@ export default function BoardroomPage() {
               socket.send(JSON.stringify({
                 type: 'message',
                 agent: agentKey,
-                content: userMsg
+                content: userMsg,
+                history: turns.slice(-5).map(t => ({
+                  user_message: t.user_message,
+                  responses: Object.fromEntries(
+                    Object.entries(t.responses).map(([k, v]) => [k, v.substring(0, 500)])
+                  )
+                }))
               }));
             };
 
@@ -348,8 +369,58 @@ export default function BoardroomPage() {
           });
         };
 
-        // Fire WebSocket connections in parallel
+        // Fire Phase 1 WebSocket connections in parallel
         await Promise.all(targetAgents.map(agt => runAgentWs(agt)));
+
+        // === Phase 2: Cross-agent reactions (only when all agents participated) ===
+        const reactionCaptures: Record<string, string> = { 'Antigravity': '', 'Codex': '', 'Claude Code': '' };
+
+        if (targetAgents.length > 1) {
+          setPhase2Active(true);
+          setCurrentTurnReactions({ 'Antigravity': '', 'Codex': '', 'Claude Code': '' });
+
+          const runPhase2AgentWs = (agt: string) => {
+            return new Promise<void>((resolve) => {
+              const agentKey2 = agt === 'Claude Code' ? 'claude' : agt.toLowerCase();
+              const peers = targetAgents.filter(a => a !== agt && activeResponses[a]);
+              if (!peers.length) { resolve(); return; }
+
+              const peerCtx = peers.map(p =>
+                `${p}: ${activeResponses[p].replace(/\n+/g, ' ').substring(0, 250)}`
+              ).join(' | ');
+
+              const reactionContent = [
+                `Colleagues answered "${userMsg.replace(/"/g, "'").substring(0, 150)}".`,
+                peerCtx,
+                `As ${agentRoles[agt]}, react in 2 sentences: what do you add or challenge?`
+              ].join(' ');
+
+              const sock = new WebSocket(wsUrl);
+              sock.onopen = () => {
+                sock.send(JSON.stringify({ type: 'message', agent: agentKey2, content: reactionContent }));
+              };
+              sock.onmessage = (event) => {
+                try {
+                  const msg = JSON.parse(event.data);
+                  if (msg.type === 'text') {
+                    setCurrentTurnReactions(prev => {
+                      reactionCaptures[agt] = (prev[agt] || '') + msg.text;
+                      return { ...prev, [agt]: reactionCaptures[agt] };
+                    });
+                  } else if (msg.type === 'agent_done' || msg.type === 'error') {
+                    sock.close();
+                    resolve();
+                  }
+                } catch {}
+              };
+              sock.onerror = () => resolve();
+              sock.onclose = () => resolve();
+            });
+          };
+
+          await Promise.all(targetAgents.map(agt => runPhase2AgentWs(agt)));
+          setPhase2Active(false);
+        }
 
         // Log completed turn to Supabase
         const turnRes = targetAgents.map(agt => ({
@@ -376,13 +447,15 @@ export default function BoardroomPage() {
           user_message: userMsg,
           directed_to: targetVal,
           responses: activeResponses,
-          synthesis: null
+          synthesis: null,
+          reactions: targetAgents.length > 1 ? { ...reactionCaptures } : undefined
         }]);
 
         // Reset current streaming states
         setCurrentTurnUserMessage('');
         setCurrentTurnDirectedTo(null);
         setCurrentTurnResponses({ 'Antigravity': '', 'Codex': '', 'Claude Code': '' });
+        setCurrentTurnReactions({ 'Antigravity': '', 'Codex': '', 'Claude Code': '' });
         setStreaming(false);
         return;
       } catch (err) {
@@ -618,12 +691,18 @@ export default function BoardroomPage() {
       'Codex': '',
       'Claude Code': '',
     });
+    setCurrentTurnReactions({
+      'Antigravity': '',
+      'Codex': '',
+      'Claude Code': '',
+    });
     setCurrentTurnErrors({
       'Antigravity': '',
       'Codex': '',
       'Claude Code': '',
     });
     setSynthesis('');
+    setPhase2Active(false);
   }
 
   // Helper check if last turn has response
@@ -928,6 +1007,45 @@ export default function BoardroomPage() {
               )
             )}
 
+            {/* Phase 2 reactions for completed turns */}
+            {turn.reactions && !turn.directed_to && Object.values(turn.reactions).some(r => r) && (
+              <div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem', paddingLeft: '0.25rem' }}>
+                  Cross-Agent Reactions
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '0.625rem' }}>
+                  {Object.keys(agentColors).map(agt => turn.reactions![agt] ? (
+                    <div key={agt} style={{
+                      background: 'var(--surface)',
+                      border: `1px solid ${agentColors[agt]}22`,
+                      borderRadius: '10px',
+                      overflow: 'hidden',
+                    }}>
+                      <div style={{
+                        padding: '0.375rem 0.75rem',
+                        background: agentBgs[agt],
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        color: agentColors[agt],
+                        borderBottom: `1px solid ${agentColors[agt]}22`,
+                      }}>
+                        {agt} reacts
+                      </div>
+                      <div style={{
+                        padding: '0.625rem 0.75rem',
+                        fontSize: '0.775rem',
+                        lineHeight: 1.5,
+                        whiteSpace: 'pre-wrap',
+                        color: 'rgba(248, 250, 252, 0.8)',
+                      }}>
+                        {turn.reactions![agt]}
+                      </div>
+                    </div>
+                  ) : null)}
+                </div>
+              </div>
+            )}
+
             {/* Synthesis result if exists */}
             {turn.synthesis && (
               <div style={{
@@ -1149,7 +1267,67 @@ export default function BoardroomPage() {
                 </div>
               )
             )}
-          </div>
+          {/* Phase 2 reactions - shown while phase2Active or after reactions arrive */}
+          {currentTurnUserMessage && !currentTurnDirectedTo && (phase2Active || Object.values(currentTurnReactions).some(r => r)) && (
+            <div style={{ marginTop: '0.5rem' }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.375rem',
+                fontSize: '0.7rem',
+                color: phase2Active ? '#f59e0b' : 'var(--muted)',
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                marginBottom: '0.5rem',
+                paddingLeft: '0.25rem',
+              }}>
+                <span style={{
+                  display: 'inline-block',
+                  width: '5px',
+                  height: '5px',
+                  borderRadius: '50%',
+                  background: phase2Active ? '#f59e0b' : '#22c55e',
+                }} />
+                {phase2Active ? 'Agents reacting to each other...' : 'Cross-Agent Reactions'}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '0.625rem' }}>
+                {Object.keys(agentColors).map(agt => (
+                  <div key={agt} style={{
+                    background: 'var(--surface)',
+                    border: `1px solid ${agentColors[agt]}22`,
+                    borderRadius: '10px',
+                    overflow: 'hidden',
+                  }}>
+                    <div style={{
+                      padding: '0.375rem 0.75rem',
+                      background: agentBgs[agt],
+                      fontSize: '0.7rem',
+                      fontWeight: 600,
+                      color: agentColors[agt],
+                      borderBottom: `1px solid ${agentColors[agt]}22`,
+                    }}>
+                      {agt} reacts
+                    </div>
+                    <div style={{
+                      padding: '0.625rem 0.75rem',
+                      fontSize: '0.775rem',
+                      lineHeight: 1.5,
+                      whiteSpace: 'pre-wrap',
+                      color: 'rgba(248, 250, 252, 0.8)',
+                    }}>
+                      {currentTurnReactions[agt] || (
+                        <span style={{ color: 'var(--muted)', fontStyle: 'italic' }}>
+                          {phase2Active ? 'Reacting...' : ''}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
         )}
 
         {/* Synthesize and Action Buttons */}
