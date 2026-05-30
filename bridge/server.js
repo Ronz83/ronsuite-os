@@ -24,16 +24,14 @@ if (fs.existsSync(envPath)) {
 const RONSUITE_URL = env.RONSUITE_URL || 'https://ronsuite-os.vercel.app';
 const OBSIDIAN_VAULT = env.OBSIDIAN_VAULT || 'C:\\Users\\Ronald\\.gemini\\antigravity\\memory\\wikis\\antigravity_master';
 
-// 2. Load Supabase Service Role Key from Next.js root env file for authentication
+// 2. Load keys from Next.js root env file
 const rootEnvPath = path.join(__dirname, '..', '.env.local');
 let supabaseKey = '';
 if (fs.existsSync(rootEnvPath)) {
   const content = fs.readFileSync(rootEnvPath, 'utf8');
   content.split('\n').forEach(line => {
     const match = line.match(/^SUPABASE_SERVICE_ROLE_KEY=(.*)$/);
-    if (match) {
-      supabaseKey = match[1].trim();
-    }
+    if (match) supabaseKey = match[1].trim();
   });
 }
 
@@ -92,19 +90,35 @@ wss.on('connection', (ws) => {
           return;
         }
 
+        // Inject keys from bridge/.env into process.env for CLI usage
+        if (env.OPENAI_API_KEY) process.env.OPENAI_API_KEY = env.OPENAI_API_KEY;
+        if (env.GEMINI_API_KEY) process.env.GEMINI_API_KEY = env.GEMINI_API_KEY;
+
         if (command === 'gemini' || command === 'codex') {
-          console.log(`[Bridge] Spawning PTY CLI for agent ${agent} (${command}) with user content`);
-          const ptyProcess = pty.spawn(command, [content], {
-            name: 'xterm-color',
-            cols: 120,
-            rows: 30,
-            cwd: require('os').homedir(),
-            env: process.env,
-            shell: true
-          });
+          console.log(`[Bridge] Spawning PTY CLI for agent ${agent} (${command})`);
+          
+          let ptyProcess;
+          if (process.platform === 'win32') {
+            const shell = process.env.COMSPEC || 'cmd.exe';
+            // On Windows, npm global CLIs are .cmd scripts and must be run via the shell to resolve.
+            ptyProcess = pty.spawn(shell, ['/c', command, content], {
+              name: 'xterm-color',
+              cols: 120,
+              rows: 30,
+              cwd: require('os').homedir(),
+              env: process.env
+            });
+          } else {
+            ptyProcess = pty.spawn(command, [content], {
+              name: 'xterm-color',
+              cols: 120,
+              rows: 30,
+              cwd: require('os').homedir(),
+              env: process.env
+            });
+          }
 
           ptyProcess.onData((data) => {
-            // Strip ANSI escape codes from PTY output before sending via WebSocket
             const cleanText = data.replace(/\x1b\[[0-9;]*[mGKHFJ]/g, '').replace(/\r/g, '');
             ws.send(JSON.stringify({
               type: 'text',
@@ -113,7 +127,7 @@ wss.on('connection', (ws) => {
             }));
           });
 
-          ptyProcess.onExit(({ exitCode, signal }) => {
+          ptyProcess.onExit(({ exitCode }) => {
             console.log(`[Bridge] PTY CLI ${command} exited with code ${exitCode}`);
             ws.send(JSON.stringify({
               type: 'agent_done',
@@ -122,10 +136,11 @@ wss.on('connection', (ws) => {
             }));
           });
         } else {
-          console.log(`[Bridge] Spawning standard CLI for agent ${agent}: "${command}" with user content`);
+          // Claude spawn (non-PTY)
+          console.log(`[Bridge] Spawning standard child process CLI for agent ${agent} (${command})`);
+          const spawnEnv = { ...process.env, NO_COLOR: '1' };
           
-          // Spawn CLI command in shell mode
-          const child = spawn(command, [content], { shell: true });
+          const child = spawn(command, [content], { shell: true, env: spawnEnv });
 
           child.stdout.on('data', (chunk) => {
             ws.send(JSON.stringify({
@@ -136,11 +151,7 @@ wss.on('connection', (ws) => {
           });
 
           child.stderr.on('data', (chunk) => {
-            ws.send(JSON.stringify({
-              type: 'error',
-              agent,
-              message: chunk.toString()
-            }));
+            console.log(`[Bridge][${agent} stderr] ${chunk.toString().trim()}`);
           });
 
           child.on('close', (code) => {
