@@ -24,7 +24,19 @@ export async function GET(req: Request) {
 
     if (cError) throw cError;
 
-    return NextResponse.json({ success: true, missions: missions || [], cards: cards || [] });
+    const { data: projects, error: pError } = await serviceClient
+      .from('nws_projects')
+      .select('*')
+      .order('name', { ascending: true });
+
+    if (pError) throw pError;
+
+    return NextResponse.json({
+      success: true,
+      missions: missions || [],
+      cards: cards || [],
+      projects: projects || []
+    });
   } catch (err: any) {
     console.error("[NWS Context API] Error fetching context:", err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
@@ -46,12 +58,24 @@ export async function PATCH(req: Request) {
 
     const ALLOWED_MISSION_FIELDS = ['message', 'best_for'];
     const ALLOWED_CARD_FIELDS = ['content'];
-    const allowed = type === 'mission' ? ALLOWED_MISSION_FIELDS : ALLOWED_CARD_FIELDS;
+    const ALLOWED_PROJECT_FIELDS = ['purpose', 'built', 'missing', 'next_step', 'rating', 'stage', 'location', 'note'];
+    
+    const allowed = type === 'mission' 
+      ? ALLOWED_MISSION_FIELDS 
+      : type === 'card' 
+        ? ALLOWED_CARD_FIELDS 
+        : ALLOWED_PROJECT_FIELDS;
+
     if (!allowed.includes(field)) {
       return NextResponse.json({ success: false, error: 'Invalid field' }, { status: 400 });
     }
 
-    const table = type === 'mission' ? 'nws_mission_entries' : 'nws_brand_cards';
+    const table = type === 'mission' 
+      ? 'nws_mission_entries' 
+      : type === 'card' 
+        ? 'nws_brand_cards' 
+        : 'nws_projects';
+
     const serviceClient = createServiceClient();
 
     const updateData: Record<string, any> = {
