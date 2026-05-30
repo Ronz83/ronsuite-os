@@ -170,7 +170,8 @@ export default function BoardroomPage() {
 
         const res = await fetch(`${cleanUrl}/health`, {
           signal: controller.signal,
-          mode: 'cors'
+          mode: 'cors',
+          headers: { 'ngrok-skip-browser-warning': 'true' }
         });
         clearTimeout(timeoutId);
 

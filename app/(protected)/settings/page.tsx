@@ -34,7 +34,7 @@ export default function SettingsPage() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 2000);
 
-    fetch(`${bridgeUrl}/health`, { signal: controller.signal })
+    fetch(`${bridgeUrl}/health`, { signal: controller.signal, headers: { 'ngrok-skip-browser-warning': 'true' } })
       .then((res) => {
         if (!res.ok) throw new Error('Not ok');
         return res.json();
