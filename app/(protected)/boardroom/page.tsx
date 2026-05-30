@@ -36,6 +36,7 @@ export default function BoardroomPage() {
   // Bridge & Mode State
   const [bridgeMode, setBridgeMode] = useState<'cloud' | 'bridge'>('cloud');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [businessContext, setBusinessContext] = useState<string>('');
 
   // Persistent meeting turns thread
   const [turns, setTurns] = useState<BoardroomTurn[]>([]);
@@ -109,6 +110,26 @@ export default function BoardroomPage() {
       
       if (projData) setProjects(projData);
       if (agtData) setAgents(agtData);
+
+      // Load business context
+      try {
+        const res = await fetch('/api/hermes/context');
+        if (res.ok) {
+          const resJson = await res.json();
+          if (resJson.success && resJson.context) {
+            const ctx = resJson.context;
+            const formatted = `Name: ${ctx.full_name || ''}
+Business: ${ctx.business_name || ''}
+Description: ${ctx.business_description || ''}
+Role: ${ctx.role || ''}
+Communication Style: ${ctx.communication_style || ''}
+Connected Systems: ${Array.isArray(ctx.connected_systems) ? ctx.connected_systems.join(', ') : ctx.connected_systems || ''}`;
+            setBusinessContext(formatted);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load business context:", err);
+      }
     }
     loadData();
   }, [supabase]);
@@ -323,6 +344,7 @@ export default function BoardroomPage() {
                 type: 'message',
                 agent: agentKey,
                 content: userMsg,
+                businessContext: businessContext || undefined,
                 history: turns.slice(-5).map(t => ({
                   user_message: t.user_message,
                   responses: Object.fromEntries(
@@ -397,7 +419,7 @@ export default function BoardroomPage() {
 
               const sock = new WebSocket(wsUrl);
               sock.onopen = () => {
-                sock.send(JSON.stringify({ type: 'message', agent: agentKey2, content: reactionContent }));
+                sock.send(JSON.stringify({ type: 'message', agent: agentKey2, content: reactionContent, businessContext: businessContext || undefined }));
               };
               sock.onmessage = (event) => {
                 try {

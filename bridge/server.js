@@ -1,48 +1,49 @@
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
+const { spawn } = require('child_process');
+const pty = require('node-pty');
 
 const fetch = globalThis.fetch || require('node-fetch');
 
-// Load configuration from bridge/.env
+// 1. Load configuration from bridge/.env
 const envPath = path.join(__dirname, '.env');
 const env = {};
 if (fs.existsSync(envPath)) {
-  fs.readFileSync(envPath, 'utf8').split('\n').forEach(line => {
+  const content = fs.readFileSync(envPath, 'utf8');
+  content.split('\n').forEach(line => {
     const match = line.match(/^([^=]+)=(.*)$/);
-    if (match) env[match[1].trim()] = match[2].trim();
-  });
-}
-
-// Load keys from Next.js root .env.local
-const rootEnvPath = path.join(__dirname, '..', '.env.local');
-const rootEnv = {};
-if (fs.existsSync(rootEnvPath)) {
-  fs.readFileSync(rootEnvPath, 'utf8').split('\n').forEach(line => {
-    const match = line.match(/^([^=]+)=(.*)$/);
-    if (match) rootEnv[match[1].trim()] = match[2].trim();
+    if (match) {
+      env[match[1].trim()] = match[2].trim();
+    }
   });
 }
 
 const RONSUITE_URL = env.RONSUITE_URL || 'https://ronsuite-os.vercel.app';
 const OBSIDIAN_VAULT = env.OBSIDIAN_VAULT || 'C:\\Users\\Ronald\\.gemini\\antigravity\\memory\\wikis\\antigravity_master';
 
-// API keys — bridge/.env takes priority, falls back to .env.local
-const supabaseKey    = rootEnv.SUPABASE_SERVICE_ROLE_KEY || '';
-const openaiKey      = env.OPENAI_API_KEY      || rootEnv.OPENAI_API_KEY      || '';
-const anthropicKey   = env.ANTHROPIC_API_KEY   || rootEnv.ANTHROPIC_API_KEY   || '';
-const geminiKey      = env.GEMINI_API_KEY      || rootEnv.GEMINI_API_KEY      || '';
+// 2. Load keys from Next.js root env file
+const rootEnvPath = path.join(__dirname, '..', '.env.local');
+let supabaseKey = '';
+if (fs.existsSync(rootEnvPath)) {
+  const content = fs.readFileSync(rootEnvPath, 'utf8');
+  content.split('\n').forEach(line => {
+    const match = line.match(/^SUPABASE_SERVICE_ROLE_KEY=(.*)$/);
+    if (match) supabaseKey = match[1].trim();
+  });
+}
 
 console.log(`[Bridge] Starting bridge...`);
 console.log(`[Bridge] Target URL: ${RONSUITE_URL}`);
-console.log(`[Bridge] Keys loaded — OpenAI: ${openaiKey ? 'yes' : 'NO'} | Anthropic: ${anthropicKey ? 'yes' : 'NO'} | Gemini: ${geminiKey ? 'yes' : 'NO'}`);
+console.log(`[Bridge] Vault Path: ${OBSIDIAN_VAULT}`);
 
-// ── Express app ────────────────────────────────────────────────────────────────
+// 3. Setup Express app
 const app = express();
 app.use(express.json());
+
+// Enable CORS for frontend health checks
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Headers', '*');
@@ -50,239 +51,287 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/health', (req, res) => res.json({ status: 'ok', mode: 'bridge', timestamp: Date.now() }));
-app.get('/status', (req, res) => res.json({ configuredCLIs: { codex: true, claude: true, antigravity: true } }));
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    mode: 'bridge',
+    timestamp: Date.now()
+  });
+});
 
-// ── SSE stream reader helper ───────────────────────────────────────────────────
-async function* readSSE(res) {
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-    for (const line of lines) {
-      if (line.startsWith('data: ')) yield line.slice(6).trim();
+app.get('/status', (req, res) => {
+  res.json({
+    configuredCLIs: {
+      codex: true,
+      claude: true,
+      antigravity: true
     }
-  }
-}
+  });
+});
 
-// ── Codex: OpenAI gpt-4o ──────────────────────────────────────────────────────
-async function runCodex(ws, content, history) {
-  if (!openaiKey) {
-    ws.send(JSON.stringify({ type: 'error', agent: 'codex', message: 'No OpenAI API key configured' }));
-    return;
-  }
-
-  const messages = [
-    { role: 'system', content: 'You are Codex, the Engineering Lead in a multi-agent AI boardroom for Novelty Web Solutions. You bring strong technical depth, architecture expertise, and pragmatic implementation focus. Be direct and concise.' },
-    ...(history || []).slice(-5).flatMap(t => [
-      { role: 'user', content: t.user_message || '' },
-      { role: 'assistant', content: t.responses?.['Codex'] || '' }
-    ]),
-    { role: 'user', content }
-  ];
-
-  try {
-    console.log(`[Bridge] Codex → OpenAI API`);
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${openaiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'gpt-4o', messages, stream: true })
-    });
-    if (!res.ok) {
-      ws.send(JSON.stringify({ type: 'error', agent: 'codex', message: `OpenAI ${res.status}: ${(await res.text()).substring(0, 200)}` }));
-      return;
-    }
-    for await (const raw of readSSE(res)) {
-      if (!raw || raw === '[DONE]') continue;
-      try {
-        const token = JSON.parse(raw).choices?.[0]?.delta?.content;
-        if (token) ws.send(JSON.stringify({ type: 'text', agent: 'codex', text: token }));
-      } catch {}
-    }
-    ws.send(JSON.stringify({ type: 'agent_done', agent: 'codex', code: 0 }));
-  } catch (err) {
-    console.error('[Bridge] Codex error:', err.message);
-    ws.send(JSON.stringify({ type: 'error', agent: 'codex', message: err.message }));
-  }
-}
-
-// ── Claude Code: Anthropic claude-sonnet-4-6 ──────────────────────────────────
-async function runClaude(ws, content, history) {
-  if (!anthropicKey) {
-    ws.send(JSON.stringify({ type: 'error', agent: 'claude', message: 'No Anthropic API key configured' }));
-    return;
-  }
-
-  const messages = [
-    ...(history || []).slice(-5).flatMap(t => [
-      { role: 'user', content: t.user_message || '' },
-      { role: 'assistant', content: t.responses?.['Claude Code'] || '' }
-    ]),
-    { role: 'user', content }
-  ];
-
-  try {
-    console.log(`[Bridge] Claude Code → Anthropic API`);
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': anthropicKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1024,
-        stream: true,
-        system: 'You are Claude Code, the Architecture Lead in a multi-agent AI boardroom for Novelty Web Solutions. You bring deep software architecture expertise, strategic thinking, and code quality focus. Be direct and concise.',
-        messages
-      })
-    });
-    if (!res.ok) {
-      ws.send(JSON.stringify({ type: 'error', agent: 'claude', message: `Anthropic ${res.status}: ${(await res.text()).substring(0, 200)}` }));
-      return;
-    }
-    for await (const raw of readSSE(res)) {
-      if (!raw) continue;
-      try {
-        const parsed = JSON.parse(raw);
-        if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'text_delta') {
-          if (parsed.delta.text) ws.send(JSON.stringify({ type: 'text', agent: 'claude', text: parsed.delta.text }));
-        }
-      } catch {}
-    }
-    ws.send(JSON.stringify({ type: 'agent_done', agent: 'claude', code: 0 }));
-  } catch (err) {
-    console.error('[Bridge] Claude error:', err.message);
-    ws.send(JSON.stringify({ type: 'error', agent: 'claude', message: err.message }));
-  }
-}
-
-// ── Antigravity: Gemini 2.0 Flash ─────────────────────────────────────────────
-async function runGemini(ws, content, history) {
-  if (!geminiKey) {
-    ws.send(JSON.stringify({ type: 'error', agent: 'antigravity', message: 'No Gemini API key configured' }));
-    return;
-  }
-
-  // Gemini requires strictly alternating user/model turns
-  const contents = [
-    ...(history || []).slice(-5).flatMap(t => [
-      { role: 'user',  parts: [{ text: t.user_message || '' }] },
-      { role: 'model', parts: [{ text: t.responses?.['Antigravity'] || '...' }] }
-    ]),
-    { role: 'user', parts: [{ text: content }] }
-  ];
-
-  try {
-    console.log(`[Bridge] Antigravity → Gemini API`);
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?key=${geminiKey}&alt=sse`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents,
-        systemInstruction: {
-          parts: [{ text: 'You are Antigravity, the Creative Director in a multi-agent AI boardroom for Novelty Web Solutions. You bring creative strategy, innovative thinking, and bold ideas. Be direct and concise.' }]
-        },
-        generationConfig: { maxOutputTokens: 1024 }
-      })
-    });
-    if (!res.ok) {
-      ws.send(JSON.stringify({ type: 'error', agent: 'antigravity', message: `Gemini ${res.status}: ${(await res.text()).substring(0, 200)}` }));
-      return;
-    }
-    for await (const raw of readSSE(res)) {
-      if (!raw) continue;
-      try {
-        const text = JSON.parse(raw).candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) ws.send(JSON.stringify({ type: 'text', agent: 'antigravity', text }));
-      } catch {}
-    }
-    ws.send(JSON.stringify({ type: 'agent_done', agent: 'antigravity', code: 0 }));
-  } catch (err) {
-    console.error('[Bridge] Gemini error:', err.message);
-    ws.send(JSON.stringify({ type: 'error', agent: 'antigravity', message: err.message }));
-  }
-}
-
-// ── WebSocket server ──────────────────────────────────────────────────────────
+// 4. Setup HTTP and WebSocket server
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 wss.on('connection', (ws) => {
   console.log('[Bridge] WS Client Connected');
 
-  ws.on('message', async (messageString) => {
+  ws.on('message', (messageString) => {
     try {
       const data = JSON.parse(messageString);
-      if (data.type !== 'message') return;
+      if (data.type === 'message') {
+        const { agent, content, businessContext } = data;
 
-      const { agent, content, history = [] } = data;
+        // Inject keys from bridge/.env into process.env for CLI usage
+        if (env.OPENAI_API_KEY) process.env.OPENAI_API_KEY = env.OPENAI_API_KEY;
+        if (env.GEMINI_API_KEY) process.env.GEMINI_API_KEY = env.GEMINI_API_KEY;
 
-      if      (agent === 'codex')       await runCodex(ws, content, history);
-      else if (agent === 'claude')      await runClaude(ws, content, history);
-      else if (agent === 'antigravity') await runGemini(ws, content, history);
-      else ws.send(JSON.stringify({ type: 'error', agent, message: `Unknown agent: ${agent}` }));
+        if (agent === 'codex') {
+          runCodex(content, businessContext, ws);
+        } else if (agent === 'claude') {
+          runClaude(content, businessContext, ws);
+        } else if (agent === 'antigravity') {
+          runGemini(content, businessContext, ws);
+        } else {
+          ws.send(JSON.stringify({ type: 'error', agent, message: `Unknown agent: ${agent}` }));
+        }
+      }
     } catch (err) {
-      console.error('[Bridge] WS message error:', err.message);
+      console.error('[Bridge] WS message parse error:', err);
     }
   });
 
-  ws.on('close', () => console.log('[Bridge] WS Client Disconnected'));
+  ws.on('close', () => {
+    console.log('[Bridge] WS Client Disconnected');
+  });
 });
 
-// ── Obsidian Sync ─────────────────────────────────────────────────────────────
+function runCodex(content, businessContext, ws) {
+  console.log(`[Bridge] Spawning PTY CLI for Codex`);
+  
+  let fullContent = content;
+  if (businessContext) {
+    fullContent = `[BUSINESS CONTEXT]\n${businessContext}\n\n[USER PROMPT]\n${content}`;
+  }
+
+  const isWin = process.platform === 'win32';
+  let ptyProcess;
+
+  if (isWin) {
+    const shell = process.env.COMSPEC || 'cmd.exe';
+    ptyProcess = pty.spawn(shell, ['/c', 'codex', fullContent], {
+      name: 'xterm-color',
+      cols: 120,
+      rows: 30,
+      cwd: require('os').homedir(),
+      env: process.env
+    });
+  } else {
+    ptyProcess = pty.spawn('codex', [fullContent], {
+      name: 'xterm-color',
+      cols: 120,
+      rows: 30,
+      cwd: require('os').homedir(),
+      env: process.env
+    });
+  }
+
+  ptyProcess.onData((data) => {
+    const cleanText = data.replace(/\x1b\[[0-9;]*[mGKHFJ]/g, '').replace(/\r/g, '');
+    ws.send(JSON.stringify({
+      type: 'text',
+      agent: 'codex',
+      text: cleanText
+    }));
+  });
+
+  ptyProcess.onExit(({ exitCode }) => {
+    console.log(`[Bridge] Codex PTY exited with code ${exitCode}`);
+    ws.send(JSON.stringify({
+      type: 'agent_done',
+      agent: 'codex',
+      code: exitCode
+    }));
+  });
+}
+
+function runGemini(content, businessContext, ws) {
+  console.log(`[Bridge] Spawning PTY CLI for Gemini (Antigravity)`);
+  
+  const args = [];
+  if (businessContext) {
+    args.push('--system-prompt', businessContext);
+  }
+  args.push(content);
+
+  const isWin = process.platform === 'win32';
+  let ptyProcess;
+
+  if (isWin) {
+    const shell = process.env.COMSPEC || 'cmd.exe';
+    ptyProcess = pty.spawn(shell, ['/c', 'gemini', ...args], {
+      name: 'xterm-color',
+      cols: 120,
+      rows: 30,
+      cwd: require('os').homedir(),
+      env: process.env
+    });
+  } else {
+    ptyProcess = pty.spawn('gemini', args, {
+      name: 'xterm-color',
+      cols: 120,
+      rows: 30,
+      cwd: require('os').homedir(),
+      env: process.env
+    });
+  }
+
+  ptyProcess.onData((data) => {
+    const cleanText = data.replace(/\x1b\[[0-9;]*[mGKHFJ]/g, '').replace(/\r/g, '');
+    ws.send(JSON.stringify({
+      type: 'text',
+      agent: 'antigravity',
+      text: cleanText
+    }));
+  });
+
+  ptyProcess.onExit(({ exitCode }) => {
+    console.log(`[Bridge] Gemini PTY exited with code ${exitCode}`);
+    ws.send(JSON.stringify({
+      type: 'agent_done',
+      agent: 'antigravity',
+      code: exitCode
+    }));
+  });
+}
+
+function runClaude(content, businessContext, ws) {
+  console.log(`[Bridge] Spawning child process CLI for Claude`);
+  const spawnEnv = { ...process.env, NO_COLOR: '1' };
+  
+  const args = [];
+  if (businessContext) {
+    args.push('--system-prompt', businessContext);
+  }
+  args.push(content);
+
+  const child = spawn('claude', args, { shell: true, env: spawnEnv });
+
+  child.stdout.on('data', (chunk) => {
+    ws.send(JSON.stringify({
+      type: 'text',
+      agent: 'claude',
+      text: chunk.toString()
+    }));
+  });
+
+  child.stderr.on('data', (chunk) => {
+    console.log(`[Bridge][claude stderr] ${chunk.toString().trim()}`);
+  });
+
+  child.on('close', (code) => {
+    console.log(`[Bridge] Claude closed with exit code ${code}`);
+    ws.send(JSON.stringify({
+      type: 'agent_done',
+      agent: 'claude',
+      code
+    }));
+  });
+
+  child.on('error', (err) => {
+    console.error(`[Bridge] Failed to run Claude:`, err);
+    ws.send(JSON.stringify({
+      type: 'error',
+      agent: 'claude',
+      message: `Execution failed: ${err.message}`
+    }));
+  });
+}
+
+// 5. Obsidian Sync Pipeline on Startup
 async function syncObsidian() {
   console.log(`[Sync] Querying pending brain sync writes...`);
   try {
     const response = await fetch(`${RONSUITE_URL}/api/brain/flush`, {
-      headers: { 'x-supabase-key': supabaseKey }
+      headers: {
+        'x-supabase-key': supabaseKey
+      }
     });
-    if (!response.ok) { console.error(`[Sync] Failed: ${response.status}`); return; }
+
+    if (!response.ok) {
+      console.error(`[Sync] Failed to fetch queue: ${response.status} ${response.statusText}`);
+      return;
+    }
 
     const resBody = await response.json();
-    if (!resBody.success || !Array.isArray(resBody.queue)) { console.error(`[Sync] Invalid payload`); return; }
+    if (!resBody.success || !Array.isArray(resBody.queue)) {
+      console.error(`[Sync] Invalid queue payload:`, resBody);
+      return;
+    }
 
     console.log(`[Sync] Found ${resBody.queue.length} pending writes.`);
     for (const item of resBody.queue) {
       try {
         const absolutePath = path.join(OBSIDIAN_VAULT, item.wiki_file);
+        
+        // Ensure path directories exist
         const dir = path.dirname(absolutePath);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
 
         const dateStr = new Date().toISOString().split('T')[0];
         const title = item.content.split('\n')[0].replace(/[#*`]/g, '').trim().substring(0, 50) || 'Memory Entry';
-        fs.appendFileSync(absolutePath, `\n\n---\n## ${dateStr} — ${title}\n${item.content}`, 'utf8');
-        console.log(`[Sync] Appended to ${absolutePath}`);
+        
+        const fileContent = `\n\n---\n## ${dateStr} — ${title}\n${item.content}`;
+        
+        fs.appendFileSync(absolutePath, fileContent, 'utf8');
+        console.log(`[Sync] Appended update to ${absolutePath}`);
 
-        await fetch(`${RONSUITE_URL}/api/brain/confirm`, {
+        // Confirm flush
+        const confirmRes = await fetch(`${RONSUITE_URL}/api/brain/confirm`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-supabase-key': supabaseKey },
-          body: JSON.stringify({ id: item.id, status: 'flushed' })
+          headers: {
+            'Content-Type': 'application/json',
+            'x-supabase-key': supabaseKey
+          },
+          body: JSON.stringify({
+            id: item.id,
+            status: 'flushed'
+          })
         });
+
+        if (confirmRes.ok) {
+          console.log(`[Sync] Confirmed item ${item.id} flushed.`);
+        } else {
+          console.error(`[Sync] Confirmation failed for ${item.id}: status ${confirmRes.status}`);
+        }
+
       } catch (writeErr) {
-        console.error(`[Sync] Error on item ${item.id}:`, writeErr.message);
+        console.error(`[Sync] Error syncing item ${item.id}:`, writeErr);
+        // Confirm as failed
         await fetch(`${RONSUITE_URL}/api/brain/confirm`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-supabase-key': supabaseKey },
-          body: JSON.stringify({ id: item.id, status: 'failed' })
+          headers: {
+            'Content-Type': 'application/json',
+            'x-supabase-key': supabaseKey
+          },
+          body: JSON.stringify({
+            id: item.id,
+            status: 'failed'
+          })
         }).catch(() => {});
       }
     }
   } catch (err) {
-    console.error(`[Sync] Connection error:`, err.message);
+    console.error(`[Sync] Sync pipeline encountered connection error:`, err);
   }
 }
 
-// ── Start ─────────────────────────────────────────────────────────────────────
+// 6. Bind to port 3001
 const PORT = 3001;
 server.listen(PORT, () => {
-  console.log(`[Bridge] Server listening on port ${PORT}`);
+  console.log(`[Bridge] Server listening on HTTP/WS port ${PORT}`);
+  // Execute Obsidian Sync pipeline
   syncObsidian();
 });
