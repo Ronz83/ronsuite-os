@@ -5,7 +5,8 @@ import { createClient } from '@/lib/supabase/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Brain, Send, Plus, Trash2, Check, X, ShieldAlert,
-  Loader2, ChevronRight, User, Bot, BookOpen, AlertCircle
+  Loader2, ChevronRight, User, Bot, BookOpen, AlertCircle,
+  Database, Sparkles, Columns, Target, Mic, ExternalLink, Cpu
 } from 'lucide-react';
 
 interface Session {
@@ -84,6 +85,7 @@ export default function HermesPage() {
   const [tempSystem, setTempSystem] = useState('');
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // 1. Fetch initial states on mount
   useEffect(() => {
@@ -396,6 +398,14 @@ export default function HermesPage() {
       alert('Failed to send message: ' + err.message);
       setStreaming(false);
     }
+  };
+
+  // Quick Action Helper
+  const triggerQuickAction = (text: string) => {
+    setInputMessage(text);
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 50);
   };
 
   // Onboarding helpers
@@ -869,6 +879,7 @@ export default function HermesPage() {
             <form onSubmit={handleSendMessage} style={{ padding: '1.5rem 2rem', background: 'var(--surface)', borderTop: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', gap: '0.75rem', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '0.5rem 0.75rem' }}>
                 <input
+                  ref={inputRef}
                   type="text"
                   value={inputMessage}
                   onChange={e => setInputMessage(e.target.value)}
@@ -901,13 +912,144 @@ export default function HermesPage() {
           }}>
             {/* Header */}
             <div style={{ padding: '1rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <ShieldAlert size={18} style={{ color: 'var(--warning)' }} />
-              <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text)' }}>Action Approvals</span>
+              <Cpu size={18} style={{ color: 'var(--accent)' }} />
+              <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text)' }}>Engine Control Center</span>
             </div>
 
-            {/* Pending Approvals */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <h4 style={{ fontSize: '0.75rem', color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Pending Queue</h4>
+            {/* Scrollable Container */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              
+              {/* Hermes Feature Controls */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <h4 style={{ fontSize: '0.75rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Hermes Features</h4>
+                
+                {/* 1. Persistent Memory */}
+                <div style={{
+                  background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '0.75rem',
+                  display: 'flex', flexDirection: 'column', gap: '0.5rem', transition: 'border-color 0.2s'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Database size={15} style={{ color: 'var(--accent)' }} />
+                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text)' }}>Persistent Memory</span>
+                    </div>
+                    <a href="/memory" style={{ color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: '2px', textDecoration: 'none', fontSize: '0.7rem' }}>
+                      Open <ExternalLink size={10} />
+                    </a>
+                  </div>
+                  <p style={{ fontSize: '0.725rem', color: 'var(--muted)', lineHeight: '1.3' }}>Keep track of projects, user contexts, and history.</p>
+                  <button
+                    onClick={() => triggerQuickAction("Recall my business context and current priorities.")}
+                    style={{
+                      background: 'rgba(99, 102, 241, 0.1)', border: 'none', color: 'var(--accent)',
+                      borderRadius: '6px', padding: '0.35rem 0.5rem', fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', textAlign: 'left'
+                    }}
+                  >
+                    ⚡ Recall Context
+                  </button>
+                </div>
+
+                {/* 2. Autonomous Skill Creation */}
+                <div style={{
+                  background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '0.75rem',
+                  display: 'flex', flexDirection: 'column', gap: '0.5rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Sparkles size={15} style={{ color: '#10b981' }} />
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text)' }}>Autonomous Skills</span>
+                  </div>
+                  <p style={{ fontSize: '0.725rem', color: 'var(--muted)', lineHeight: '1.3' }}>Design and train new workflows for repetitive tasks.</p>
+                  <button
+                    onClick={() => triggerQuickAction("Let's create a new skill to automate ")}
+                    style={{
+                      background: 'rgba(16, 185, 129, 0.1)', border: 'none', color: '#10b981',
+                      borderRadius: '6px', padding: '0.35rem 0.5rem', fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', textAlign: 'left'
+                    }}
+                  >
+                    ⚡ Teach New Skill
+                  </button>
+                </div>
+
+                {/* 3. Kanban Workflow */}
+                <div style={{
+                  background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '0.75rem',
+                  display: 'flex', flexDirection: 'column', gap: '0.5rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Columns size={15} style={{ color: '#ea580c' }} />
+                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text)' }}>Kanban Board</span>
+                    </div>
+                    <a href="/board" style={{ color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: '2px', textDecoration: 'none', fontSize: '0.7rem' }}>
+                      Board <ExternalLink size={10} />
+                    </a>
+                  </div>
+                  <p style={{ fontSize: '0.725rem', color: 'var(--muted)', lineHeight: '1.3' }}>Coordinated multi-agent workflow on a shared task board.</p>
+                  <button
+                    onClick={() => triggerQuickAction("Show all active tasks on the project board")}
+                    style={{
+                      background: 'rgba(234, 88, 12, 0.1)', border: 'none', color: '#ea580c',
+                      borderRadius: '6px', padding: '0.35rem 0.5rem', fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', textAlign: 'left'
+                    }}
+                  >
+                    ⚡ View Board Status
+                  </button>
+                </div>
+
+                {/* 4. Goal-Oriented Planning */}
+                <div style={{
+                  background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '0.75rem',
+                  display: 'flex', flexDirection: 'column', gap: '0.5rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Target size={15} style={{ color: '#f59e0b' }} />
+                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text)' }}>Goal Planning</span>
+                    </div>
+                    <a href="/goals" style={{ color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: '2px', textDecoration: 'none', fontSize: '0.7rem' }}>
+                      Goals <ExternalLink size={10} />
+                    </a>
+                  </div>
+                  <p style={{ fontSize: '0.725rem', color: 'var(--muted)', lineHeight: '1.3' }}>Assign long-term, multi-turn milestones using `/goal` command.</p>
+                  <button
+                    onClick={() => triggerQuickAction("/goal ")}
+                    style={{
+                      background: 'rgba(245, 158, 11, 0.1)', border: 'none', color: '#f59e0b',
+                      borderRadius: '6px', padding: '0.35rem 0.5rem', fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', textAlign: 'left'
+                    }}
+                  >
+                    ⚡ Queue New Goal
+                  </button>
+                </div>
+
+                {/* 5. Voice Mode */}
+                <div style={{
+                  background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '0.75rem',
+                  display: 'flex', flexDirection: 'column', gap: '0.5rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Mic size={15} style={{ color: '#a855f7' }} />
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text)' }}>Voice Mode</span>
+                  </div>
+                  <p style={{ fontSize: '0.725rem', color: 'var(--muted)', lineHeight: '1.3' }}>Enable real-time voice synthesis and interactive voice chat.</p>
+                  <button
+                    onClick={() => triggerQuickAction("Start voice interaction mode")}
+                    style={{
+                      background: 'rgba(168, 85, 247, 0.1)', border: 'none', color: '#a855f7',
+                      borderRadius: '6px', padding: '0.35rem 0.5rem', fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', textAlign: 'left'
+                    }}
+                  >
+                    ⚡ Enable Voice Mode
+                  </button>
+                </div>
+
+              </div>
+
+              <div style={{ borderBottom: '1px solid var(--border)', margin: '0.25rem 0' }} />
+
+              {/* Pending Approvals */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <h4 style={{ fontSize: '0.75rem', color: 'var(--muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Pending Queue</h4>
               
               {approvals.filter(a => a.status === 'pending').map(a => {
                 const isApproved = recentlyResolved[a.id] === 'approved';
@@ -975,6 +1117,7 @@ export default function HermesPage() {
               {approvals.filter(a => a.status === 'pending').length === 0 && (
                 <p style={{ fontSize: '0.75rem', color: 'var(--muted)', textAlign: 'center', marginTop: '2rem' }}>No pending approvals.</p>
               )}
+              </div>
 
               {/* Resolved Approvals */}
               <h4 style={{ fontSize: '0.75rem', color: 'var(--muted)', textTransform: 'uppercase', marginTop: '1.5rem', marginBottom: '0.25rem' }}>Resolved</h4>
