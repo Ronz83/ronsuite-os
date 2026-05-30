@@ -106,6 +106,27 @@ export default function HermesPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamText]);
 
+  const prefillOnboarding = async () => {
+    try {
+      const res = await fetch('/api/nws-context');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.missions) {
+          const missionStatement = json.missions.find((m: any) => m.version === 'Mission Statement');
+          if (missionStatement) {
+            setOnboardData(prev => ({
+              ...prev,
+              business_name: 'Novelty Web Solutions',
+              business_description: missionStatement.message
+            }));
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to pre-fill onboarding data:', err);
+    }
+  };
+
   // Context Fetching
   const fetchContext = async () => {
     try {
@@ -117,9 +138,12 @@ export default function HermesPage() {
           setOnboardingComplete(data.context.onboarding_complete);
           if (data.context.onboarding_complete) {
             fetchSessions();
+          } else {
+            prefillOnboarding();
           }
         } else {
           setOnboardingComplete(false);
+          prefillOnboarding();
         }
       }
     } catch (err) {

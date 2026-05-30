@@ -63,8 +63,27 @@ export async function POST(req: Request) {
   const currentPrioritiesBullets = formatList(context.current_priorities);
   const connectedSystemsBullets = formatList(context.connected_systems);
 
+  // Fetch NWS brand context
+  const { data: missions } = await serviceClient
+    .from('nws_mission_entries')
+    .select('*');
+
+  const { data: cards } = await serviceClient
+    .from('nws_brand_cards')
+    .select('*');
+
+  const nwsContextText = `
+NWS BRAND MESSAGING & MISSION:
+${(missions || []).map(m => `Version: ${m.version}\nBest Used For: ${m.best_for}\nMessage: ${m.message}`).join('\n---\n')}
+
+NWS CORE BRAND VALUES:
+${(cards || []).map(c => `Title: ${c.title}\nContent: ${c.content}`).join('\n---\n')}
+`;
+
   // 3. Build system prompt
   const systemPrompt = `You are Hermes, the AI Chief of Staff for ${context.full_name} at ${context.business_name}.
+
+${nwsContextText}
 
 BUSINESS CONTEXT:
 ${context.business_description}
@@ -138,7 +157,7 @@ YOUR ROLE:
 
       // Stream call to Anthropic API
       const anthropicStream = await anthropic.messages.create({
-        model: 'claude-opus-4-7',
+        model: MODEL,
         max_tokens: MAX_TOKENS,
         system: systemPrompt,
         messages,

@@ -162,7 +162,7 @@ async function runCodex(content, businessContext, ws) {
 async function runGemini(content, businessContext, ws) {
   console.log(`[Bridge] Running Gemini via REST API`);
   const apiKey = env.GEMINI_API_KEY;
-  const model = 'gemini-2.5-pro';
+  const model = 'gemini-2.0-flash';
 
   const body = {
     contents: [{ role: 'user', parts: [{ text: content }] }],
@@ -220,7 +220,7 @@ async function runClaude(content, businessContext, ws) {
   console.log(`[Bridge] Running Claude via Anthropic API`);
 
   const body = {
-    model: 'claude-opus-4-7',
+    model: 'claude-opus-4-8',
     max_tokens: 8096,
     messages: [{ role: 'user', content }],
     stream: true
