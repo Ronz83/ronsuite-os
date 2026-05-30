@@ -4,6 +4,7 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const { spawn } = require('child_process');
+const pty = require('node-pty');
 
 const fetch = globalThis.fetch || require('node-fetch');
 
@@ -85,50 +86,81 @@ wss.on('connection', (ws) => {
         let command = '';
         if (agent === 'codex') command = 'codex';
         else if (agent === 'claude') command = 'claude';
-        else if (agent === 'antigravity') command = 'antigravity';
+        else if (agent === 'antigravity') command = 'gemini';
         else {
           ws.send(JSON.stringify({ type: 'error', agent, message: `Unknown agent: ${agent}` }));
           return;
         }
 
-        console.log(`[Bridge] Spawning CLI for agent ${agent}: "${command}" with user content`);
-        
-        // Spawn CLI command in shell mode
-        const child = spawn(command, [content], { shell: true });
+        if (command === 'gemini' || command === 'codex') {
+          console.log(`[Bridge] Spawning PTY CLI for agent ${agent} (${command}) with user content`);
+          const ptyProcess = pty.spawn(command, [content], {
+            name: 'xterm-color',
+            cols: 120,
+            rows: 30,
+            cwd: require('os').homedir(),
+            env: process.env,
+            shell: true
+          });
 
-        child.stdout.on('data', (chunk) => {
-          ws.send(JSON.stringify({
-            type: 'text',
-            agent,
-            text: chunk.toString()
-          }));
-        });
+          ptyProcess.onData((data) => {
+            // Strip ANSI escape codes from PTY output before sending via WebSocket
+            const cleanText = data.replace(/\x1b\[[0-9;]*[mGKHFJ]/g, '').replace(/\r/g, '');
+            ws.send(JSON.stringify({
+              type: 'text',
+              agent,
+              text: cleanText
+            }));
+          });
 
-        child.stderr.on('data', (chunk) => {
-          ws.send(JSON.stringify({
-            type: 'error',
-            agent,
-            message: chunk.toString()
-          }));
-        });
+          ptyProcess.onExit(({ exitCode, signal }) => {
+            console.log(`[Bridge] PTY CLI ${command} exited with code ${exitCode}`);
+            ws.send(JSON.stringify({
+              type: 'agent_done',
+              agent,
+              code: exitCode
+            }));
+          });
+        } else {
+          console.log(`[Bridge] Spawning standard CLI for agent ${agent}: "${command}" with user content`);
+          
+          // Spawn CLI command in shell mode
+          const child = spawn(command, [content], { shell: true });
 
-        child.on('close', (code) => {
-          console.log(`[Bridge] CLI ${command} closed with exit code ${code}`);
-          ws.send(JSON.stringify({
-            type: 'agent_done',
-            agent,
-            code
-          }));
-        });
+          child.stdout.on('data', (chunk) => {
+            ws.send(JSON.stringify({
+              type: 'text',
+              agent,
+              text: chunk.toString()
+            }));
+          });
 
-        child.on('error', (err) => {
-          console.error(`[Bridge] Failed to run CLI command: ${command}:`, err);
-          ws.send(JSON.stringify({
-            type: 'error',
-            agent,
-            message: `Execution failed: ${err.message}`
-          }));
-        });
+          child.stderr.on('data', (chunk) => {
+            ws.send(JSON.stringify({
+              type: 'error',
+              agent,
+              message: chunk.toString()
+            }));
+          });
+
+          child.on('close', (code) => {
+            console.log(`[Bridge] CLI ${command} closed with exit code ${code}`);
+            ws.send(JSON.stringify({
+              type: 'agent_done',
+              agent,
+              code
+            }));
+          });
+
+          child.on('error', (err) => {
+            console.error(`[Bridge] Failed to run CLI command: ${command}:`, err);
+            ws.send(JSON.stringify({
+              type: 'error',
+              agent,
+              message: `Execution failed: ${err.message}`
+            }));
+          });
+        }
       }
     } catch (err) {
       console.error('[Bridge] WS message parse error:', err);
