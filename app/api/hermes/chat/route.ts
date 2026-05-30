@@ -63,6 +63,24 @@ export async function POST(req: Request) {
   const currentPrioritiesBullets = formatList(context.current_priorities);
   const connectedSystemsBullets = formatList(context.connected_systems);
 
+  // Parse raw_intake metadata slots
+  const rawIntake = context.raw_intake || {};
+  const contacts = Array.isArray(rawIntake.key_contacts)
+    ? rawIntake.key_contacts.map((c: any) => `- ${c.name} (${c.role}): ${c.email || 'No email'}`).join('\n')
+    : 'No contacts configured.';
+  const routine = rawIntake.weekly_routine
+    ? Object.entries(rawIntake.weekly_routine).map(([k, v]) => `- ${k.replace(/_/g, ' ')}: ${v}`).join('\n')
+    : 'No weekly routine configured.';
+  const guardrails = Array.isArray(rawIntake.guardrails)
+    ? rawIntake.guardrails.map((g: any) => `- ${g}`).join('\n')
+    : 'No specific guardrails configured.';
+  const milestones = Array.isArray(rawIntake.milestones)
+    ? rawIntake.milestones.map((m: any) => `- ${m.title} (Target: ${m.date})`).join('\n')
+    : 'No upcoming milestones configured.';
+  const links = rawIntake.knowledge_links
+    ? Object.entries(rawIntake.knowledge_links).map(([k, v]) => `- ${k.replace(/_/g, ' ')}: ${v}`).join('\n')
+    : 'No external links configured.';
+
   // Fetch NWS brand context
   const { data: missions } = await serviceClient
     .from('nws_mission_entries')
@@ -96,6 +114,21 @@ ${currentPrioritiesBullets}
 
 CONNECTED SYSTEMS:
 ${connectedSystemsBullets}
+
+KEY CONTACTS & TEAM:
+${contacts}
+
+WEEKLY ROUTINE:
+${routine}
+
+OPERATIONAL GUARDRAILS:
+${guardrails}
+
+UPCOMING MILESTONES:
+${milestones}
+
+EXTERNAL KNOWLEDGE LINKS:
+${links}
 
 COMMUNICATION STYLE: ${context.communication_style}
 

@@ -1,5 +1,5 @@
 -- Migration: 014_seed_hermes_context
--- Seeds the hermes_context table to bypass onboarding and set up default context
+-- Seeds the hermes_context table to bypass onboarding and set up default context with custom slots
 
 insert into hermes_context (
   full_name,
@@ -10,7 +10,8 @@ insert into hermes_context (
   active_projects,
   current_priorities,
   connected_systems,
-  onboarding_complete
+  onboarding_complete,
+  raw_intake
 ) values (
   'Ronald Prescod',
   'Novelty Web Solutions',
@@ -20,6 +21,30 @@ insert into hermes_context (
   '["Caricom Business", "TicketFlows", "RonSuite OS", "Novelty Web Solutions"]'::jsonb,
   '["Finish ronsuite-os", "Stabilize and launch TicketFlow", "Complete NWS Free Offer"]'::jsonb,
   '["Supabase", "Vercel", "GitHub"]'::jsonb,
-  true
+  true,
+  '{
+    "key_contacts": [
+      { "name": "Codex", "role": "Engineering Lead Agent", "email": "codex@ronsuite-os.local" },
+      { "name": "Claude Code", "role": "Architecture Lead Agent", "email": "claude@ronsuite-os.local" },
+      { "name": "Antigravity", "role": "Creative Director Agent", "email": "antigravity@ronsuite-os.local" }
+    ],
+    "weekly_routine": {
+      "focus_hours": "9 AM - 5 PM EST",
+      "milestone_review": "Every Friday at 4 PM EST"
+    },
+    "guardrails": [
+      "Always ask for approval before performing destructive operations",
+      "Prefer cloud mode unless bridge connection is validated",
+      "Format all system-facing actions as JSON approvals"
+    ],
+    "milestones": [
+      { "title": "Finish ronsuite-os core panels", "date": "2026-06-15" },
+      { "title": "TicketFlow payment gateway launch", "date": "2026-07-01" }
+    ],
+    "knowledge_links": {
+      "obsidian_vault": "C:\\\\Users\\\\Ronald\\\\.gemini\\\\antigravity\\\\memory\\\\wikis\\\\antigravity_master",
+      "vercel_dashboard": "https://vercel.com/ronsuite-os"
+    }
+  }'::jsonb
 )
 on conflict do nothing;
