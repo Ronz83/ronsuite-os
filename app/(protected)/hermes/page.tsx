@@ -462,7 +462,7 @@ export default function HermesPage() {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', background: 'var(--bg)', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', height: '100vh', width: '100%', minWidth: 0, background: 'var(--bg)', overflow: 'hidden' }}>
       
       {/* ONBOARDING MODAL OVERLAY */}
       <AnimatePresence>
@@ -824,7 +824,7 @@ export default function HermesPage() {
           )}
 
           {/* COLUMN 2: CHAT THREAD (MIDDLE) */}
-          <section style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <section style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
             
             {/* Thread Header */}
             <div style={{
@@ -908,7 +908,7 @@ export default function HermesPage() {
                     background: m.role === 'user' ? 'rgba(99, 102, 241, 0.1)' : 'var(--surface)',
                     border: '1px solid var(--border)', borderRadius: '12px',
                     padding: '0.875rem 1.25rem', fontSize: '0.9rem', color: 'var(--text)',
-                    lineHeight: '1.6', whiteSpace: 'pre-wrap'
+                    lineHeight: '1.6', whiteSpace: 'pre-wrap', wordBreak: 'break-word'
                   }}>
                     {m.content}
                   </div>
@@ -928,7 +928,7 @@ export default function HermesPage() {
                   <div style={{
                     background: 'var(--surface)', border: '1px solid var(--border)',
                     borderRadius: '12px', padding: '0.875rem 1.25rem', fontSize: '0.9rem',
-                    color: 'var(--text)', lineHeight: '1.6', whiteSpace: 'pre-wrap'
+                    color: 'var(--text)', lineHeight: '1.6', whiteSpace: 'pre-wrap', wordBreak: 'break-word'
                   }}>
                     {streamText}
                     <span style={{ display: 'inline-block', width: '6px', height: '15px', background: 'var(--accent)', marginLeft: '4px', animation: 'pulse 1s infinite' }} />
