@@ -1,4 +1,4 @@
-import { anthropic } from '../../anthropic';
+import { anthropic, MODEL } from '../../anthropic';
 import { createServiceClient } from '../../supabase/service';
 
 export async function projectUpdateHandler(inputs: Record<string, any>): Promise<{ briefing: string; meta: any }> {
@@ -103,11 +103,11 @@ Rules:
 - Highlight any active blockers or off-budget runs.
 - Do not include conversational greeting or signoff. Output clean, structured markdown.`;
 
-  // Run briefing using the cheap/fast Claude Haiku model as requested
-  const haikuModel = 'claude-3-5-haiku-20241022';
+  // Run briefing using the default MODEL, fallback to Claude Haiku
+  const modelToUse = MODEL || 'claude-3-haiku-20240307';
   
   const response = await anthropic.messages.create({
-    model: haikuModel,
+    model: modelToUse,
     max_tokens: 2500,
     messages: [
       { role: 'user', content: systemPrompt }
@@ -120,7 +120,7 @@ Rules:
     briefing,
     meta: {
       targetScope: targetFilter || 'all',
-      modelUsed: haikuModel,
+      modelUsed: modelToUse,
       timestamp: new Date().toISOString(),
       projectCount: (projects || []).length,
       goalCount: (goals || []).length,
