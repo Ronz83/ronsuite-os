@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { promises as fs } from 'fs';
+import { matchPromptToSkill, validateSkillInput } from '../skills/registry';
+import { executeSkill } from '../skills/executor';
 
 export const plannerToolDefinitions: Anthropic.Tool[] = [
   {
@@ -131,6 +133,24 @@ export const plannerToolDefinitions: Anthropic.Tool[] = [
       required: ['title', 'content'],
     },
   },
+  {
+    name: 'run_registered_skill',
+    description: 'Triggers a registered, autonomous/generative skill matching the prompt. Matches trigger phrases and validates input arguments.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        prompt: {
+          type: 'string',
+          description: 'The natural language prompt/instruction that triggers the skill (e.g. "draft a proposal for AA Motors")'
+        },
+        inputs: {
+          type: 'object',
+          description: 'Key-value input parameters needed by the skill, matching its specific input schema (e.g. { "clientName": "AA Motors", "needsWebsite": true })'
+        }
+      },
+      required: ['prompt', 'inputs']
+    }
+  }
 ];
 
 export async function executeToolCall(
@@ -319,6 +339,28 @@ export async function executeToolCall(
         return JSON.stringify({ success: true, memory_id: data.id, title: data.title });
       } catch (err: any) {
         return JSON.stringify({ error: `Failed to save memory: ${err.message}` });
+      }
+    }
+    case 'run_registered_skill': {
+      const { prompt, inputs } = toolInput as { prompt: string; inputs: Record<string, any> };
+      try {
+        console.log(`[Tool Call] Matching prompt to skill: "${prompt}"`);
+        const skill = await matchPromptToSkill(prompt);
+        if (!skill) {
+          return JSON.stringify({ error: `No registered skill matches the prompt: "${prompt}"` });
+        }
+
+        console.log(`[Tool Call] Matched skill: ${skill.name}. Validating inputs...`);
+        const { valid, errors } = validateSkillInput(skill, inputs);
+        if (!valid) {
+          return JSON.stringify({ error: `Invalid inputs for skill ${skill.name}: ${errors.join(', ')}` });
+        }
+
+        console.log(`[Tool Call] Running skill: ${skill.name}...`);
+        const result = await executeSkill(skill, inputs);
+        return JSON.stringify(result);
+      } catch (err: any) {
+        return JSON.stringify({ error: `Skill execution failed: ${err.message}` });
       }
     }
     default:

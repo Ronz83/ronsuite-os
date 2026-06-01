@@ -62,6 +62,27 @@ export default function HermesPage() {
   const [showJournalModal, setShowJournalModal] = useState(false);
   const [journalContent, setJournalContent] = useState('');
   const [journalTags, setJournalTags] = useState('');
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleResize = () => {
+      if (window.innerWidth < 1200) {
+        setRightSidebarOpen(false);
+      } else {
+        setRightSidebarOpen(true);
+      }
+      if (window.innerWidth < 768) {
+        setLeftSidebarOpen(false);
+      } else {
+        setLeftSidebarOpen(true);
+      }
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Approvals States
   const [approvals, setApprovals] = useState<Approval[]>([]);
@@ -712,93 +733,95 @@ export default function HermesPage() {
       {onboardingComplete && (
         <>
           {/* COLUMN 1: SESSIONS & JOURNAL (LEFT) */}
-          <aside style={{
-            width: '260px', borderRight: '1px solid var(--border)',
-            background: 'var(--surface)', display: 'flex', flexDirection: 'column', flexShrink: 0
-          }}>
-            {/* Header: Sessions */}
-            <div style={{ padding: '1rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text)' }}>Conversations</span>
-              <button
-                onClick={handleNewSession}
-                style={{
-                  background: 'rgba(99, 102, 241, 0.1)', border: 'none',
-                  color: 'var(--accent)', borderRadius: '6px', padding: '0.375rem', cursor: 'pointer'
-                }}
-              >
-                <Plus size={16} />
-              </button>
-            </div>
-
-            {/* Sessions List */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              {sessions.map(s => (
-                <div
-                  key={s.id}
-                  onClick={() => setCurrentSessionId(s.id)}
+          {leftSidebarOpen && (
+            <aside style={{
+              width: '260px', borderRight: '1px solid var(--border)',
+              background: 'var(--surface)', display: 'flex', flexDirection: 'column', flexShrink: 0
+            }}>
+              {/* Header: Sessions */}
+              <div style={{ padding: '1rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text)' }}>Conversations</span>
+                <button
+                  onClick={handleNewSession}
                   style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '0.625rem 0.75rem', borderRadius: '8px', cursor: 'pointer',
-                    background: currentSessionId === s.id ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
-                    color: currentSessionId === s.id ? 'var(--text)' : 'var(--muted)',
-                    fontSize: '0.85rem', transition: 'all 0.15s'
+                    background: 'rgba(99, 102, 241, 0.1)', border: 'none',
+                    color: 'var(--accent)', borderRadius: '6px', padding: '0.375rem', cursor: 'pointer'
                   }}
                 >
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, paddingRight: '0.5rem' }}>
-                    {s.title || 'Untitled Session'}
-                  </span>
-                  <button
-                    onClick={(e) => handleDeleteSession(s.id, e)}
-                    style={{ background: 'transparent', border: 'none', color: '#ff4d4d', cursor: 'pointer', opacity: 0.6 }}
+                  <Plus size={16} />
+                </button>
+              </div>
+
+              {/* Sessions List */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                {sessions.map(s => (
+                  <div
+                    key={s.id}
+                    onClick={() => setCurrentSessionId(s.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '0.625rem 0.75rem', borderRadius: '8px', cursor: 'pointer',
+                      background: currentSessionId === s.id ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
+                      color: currentSessionId === s.id ? 'var(--text)' : 'var(--muted)',
+                      fontSize: '0.85rem', transition: 'all 0.15s'
+                    }}
                   >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              ))}
-              {sessions.length === 0 && (
-                <p style={{ textAlign: 'center', color: 'var(--muted)', fontSize: '0.75rem', marginTop: '2rem' }}>No conversations yet.</p>
-              )}
-            </div>
-
-            {/* Header: Journal */}
-            <div style={{ padding: '1rem', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                <BookOpen size={16} /> Journal
-              </span>
-              <button
-                onClick={() => setShowJournalModal(true)}
-                style={{
-                  background: 'rgba(16, 185, 129, 0.1)', border: 'none',
-                  color: 'var(--success)', borderRadius: '6px', padding: '0.375rem', cursor: 'pointer'
-                }}
-              >
-                <Plus size={16} />
-              </button>
-            </div>
-
-            {/* Compact Journal List */}
-            <div style={{ height: '240px', overflowY: 'auto', padding: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {journals.slice(0, 5).map(j => (
-                <div key={j.id} style={{
-                  background: 'var(--surface-2)', border: '1px solid var(--border)',
-                  borderRadius: '8px', padding: '0.75rem', fontSize: '0.75rem'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted)', marginBottom: '0.25rem' }}>
-                    <span>{j.entry_date}</span>
-                    <span style={{ display: 'flex', gap: '0.25rem' }}>
-                      {j.tags.map(t => (
-                        <span key={t} style={{ background: 'rgba(99, 102, 241, 0.1)', padding: '0.05rem 0.25rem', borderRadius: '4px' }}>#{t}</span>
-                      ))}
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, paddingRight: '0.5rem' }}>
+                      {s.title || 'Untitled Session'}
                     </span>
+                    <button
+                      onClick={(e) => handleDeleteSession(s.id, e)}
+                      style={{ background: 'transparent', border: 'none', color: '#ff4d4d', cursor: 'pointer', opacity: 0.6 }}
+                    >
+                      <Trash2 size={12} />
+                    </button>
                   </div>
-                  <p style={{ color: 'var(--text)', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{j.content}</p>
-                </div>
-              ))}
-              {journals.length === 0 && (
-                <p style={{ textAlign: 'center', color: 'var(--muted)', fontSize: '0.75rem', marginTop: '2rem' }}>No journal entries yet.</p>
-              )}
-            </div>
-          </aside>
+                ))}
+                {sessions.length === 0 && (
+                  <p style={{ textAlign: 'center', color: 'var(--muted)', fontSize: '0.75rem', marginTop: '2rem' }}>No conversations yet.</p>
+                )}
+              </div>
+
+              {/* Header: Journal */}
+              <div style={{ padding: '1rem', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                  <BookOpen size={16} /> Journal
+                </span>
+                <button
+                  onClick={() => setShowJournalModal(true)}
+                  style={{
+                    background: 'rgba(16, 185, 129, 0.1)', border: 'none',
+                    color: 'var(--success)', borderRadius: '6px', padding: '0.375rem', cursor: 'pointer'
+                  }}
+                >
+                  <Plus size={16} />
+                </button>
+              </div>
+
+              {/* Compact Journal List */}
+              <div style={{ height: '240px', overflowY: 'auto', padding: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {journals.slice(0, 5).map(j => (
+                  <div key={j.id} style={{
+                    background: 'var(--surface-2)', border: '1px solid var(--border)',
+                    borderRadius: '8px', padding: '0.75rem', fontSize: '0.75rem'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--muted)', marginBottom: '0.25rem' }}>
+                      <span>{j.entry_date}</span>
+                      <span style={{ display: 'flex', gap: '0.25rem' }}>
+                        {j.tags.map(t => (
+                          <span key={t} style={{ background: 'rgba(99, 102, 241, 0.1)', padding: '0.05rem 0.25rem', borderRadius: '4px' }}>#{t}</span>
+                        ))}
+                      </span>
+                    </div>
+                    <p style={{ color: 'var(--text)', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{j.content}</p>
+                  </div>
+                ))}
+                {journals.length === 0 && (
+                  <p style={{ textAlign: 'center', color: 'var(--muted)', fontSize: '0.75rem', marginTop: '2rem' }}>No journal entries yet.</p>
+                )}
+              </div>
+            </aside>
+          )}
 
           {/* COLUMN 2: CHAT THREAD (MIDDLE) */}
           <section style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -819,6 +842,46 @@ export default function HermesPage() {
               <div>
                 <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text)' }}>Hermes Chat</h3>
                 <p style={{ fontSize: '0.75rem', color: 'var(--muted)' }}>Chief of Staff Session</p>
+              </div>
+
+              {/* Sidebar Toggles */}
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
+                <button
+                  onClick={() => setLeftSidebarOpen(prev => !prev)}
+                  style={{
+                    background: leftSidebarOpen ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                    border: '1px solid var(--border)',
+                    color: leftSidebarOpen ? 'var(--accent)' : 'var(--muted)',
+                    borderRadius: '8px',
+                    padding: '0.5rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.2s'
+                  }}
+                  title="Toggle Left Sidebar (Conversations & Journal)"
+                >
+                  <Columns size={16} />
+                </button>
+                <button
+                  onClick={() => setRightSidebarOpen(prev => !prev)}
+                  style={{
+                    background: rightSidebarOpen ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                    border: '1px solid var(--border)',
+                    color: rightSidebarOpen ? 'var(--accent)' : 'var(--muted)',
+                    borderRadius: '8px',
+                    padding: '0.5rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.2s'
+                  }}
+                  title="Toggle Right Sidebar (Engine Control)"
+                >
+                  <Cpu size={16} />
+                </button>
               </div>
             </div>
 
@@ -906,10 +969,11 @@ export default function HermesPage() {
           </section>
 
           {/* COLUMN 3: APPROVAL QUEUE (RIGHT) */}
-          <aside style={{
-            width: '280px', borderLeft: '1px solid var(--border)',
-            background: 'var(--surface)', display: 'flex', flexDirection: 'column', flexShrink: 0
-          }}>
+          {rightSidebarOpen && (
+            <aside style={{
+              width: '280px', borderLeft: '1px solid var(--border)',
+              background: 'var(--surface)', display: 'flex', flexDirection: 'column', flexShrink: 0
+            }}>
             {/* Header */}
             <div style={{ padding: '1rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Cpu size={18} style={{ color: 'var(--accent)' }} />
@@ -1141,8 +1205,9 @@ export default function HermesPage() {
               </div>
             </div>
           </aside>
-        </>
-      )}
+        )}
+      </>
+    )}
 
       {/* JOURNAL ENTRY MODAL */}
       <AnimatePresence>

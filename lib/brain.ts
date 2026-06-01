@@ -124,9 +124,22 @@ export async function makeSystemPromptDynamic(prompt: string, serviceClient: any
     // We match from "Ronald's projects:" to the end of sentence (e.g. up to a period)
     updated = updated.replace(/Ronald's projects:[^.]+\./gi, replacement + ".");
     
+    // Dynamically append active registered skills
+    const { data: dbSkills } = await serviceClient
+      .from('skills')
+      .select('name, description, trigger_phrases')
+      .eq('status', 'active');
+
+    if (dbSkills && dbSkills.length > 0) {
+      const skillsBlock = `\n\nRegistered Autonomous Skills:\nYou have access to the following pre-built registered skills. When Ronald asks you to perform one of these actions, call the run_registered_skill tool passing the matched prompt and necessary input parameters:\n` +
+        dbSkills.map((s: any) => `- **${s.name}**: ${s.description} (Triggers: ${s.trigger_phrases.map((tp: string) => `"${tp}"`).join(', ')})`).join('\n');
+      updated += skillsBlock;
+    }
+
     return updated;
   } catch (err) {
     console.error("Error making system prompt dynamic:", err);
     return prompt;
   }
 }
+
