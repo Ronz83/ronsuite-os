@@ -13,6 +13,7 @@ const NAV = [
   { href: '/goals', icon: '🎯', label: 'Goals' },
   { href: '/board', icon: '📋', label: 'Board' },
   { href: '/memory', icon: '🧠', label: 'Memory' },
+  { href: '/openhuman', icon: '👤', label: 'OpenHuman' },
   { href: '/nws-context', icon: '⚡', label: 'NWS Context' },
   { href: '/settings', icon: '⚙️', label: 'Settings' },
 ];
