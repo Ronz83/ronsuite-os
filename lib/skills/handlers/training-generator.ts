@@ -35,6 +35,13 @@ Write this in a premium, motivating corporate training voice. Make the scripts a
 
   const content = response.content[0]?.type === 'text' ? response.content[0].text : '';
 
+  const inputTokens = response.usage?.input_tokens || 0;
+  const outputTokens = response.usage?.output_tokens || 0;
+  const totalTokens = inputTokens + outputTokens;
+  
+  // Cost calculation for Claude 3.5 Sonnet: $3/MT input, $15/MT output
+  const costUsd = (inputTokens * 0.000003) + (outputTokens * 0.000015);
+
   return {
     content,
     meta: {
@@ -42,7 +49,13 @@ Write this in a premium, motivating corporate training voice. Make the scripts a
       targetAudience,
       primaryOffer,
       modelUsed: modelToUse,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      usage: {
+        inputTokens,
+        outputTokens,
+        totalTokens,
+        costUsd
+      }
     }
   };
 }

@@ -92,13 +92,22 @@ export async function POST(request: Request) {
     // 4. Execute the skill handler
     try {
       const output = await handler(inputs);
+      const usage = output?.meta?.usage || {};
+      const inputTokens = usage.inputTokens || 0;
+      const outputTokens = usage.outputTokens || 0;
+      const totalTokens = usage.totalTokens || 0;
+      const costUsd = usage.costUsd || 0.0;
       
       // Update run log to success
       await broker
         .from('workstation_runs')
         .update({
           status: 'success',
-          outputs: output
+          outputs: output,
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          total_tokens: totalTokens,
+          cost_usd: costUsd
         })
         .eq('id', runId);
 

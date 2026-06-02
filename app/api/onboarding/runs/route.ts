@@ -16,6 +16,10 @@ export async function GET() {
         status,
         error,
         created_at,
+        input_tokens,
+        output_tokens,
+        total_tokens,
+        cost_usd,
         workstation_skills (
           name,
           description

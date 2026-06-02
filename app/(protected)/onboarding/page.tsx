@@ -20,6 +20,10 @@ interface Run {
   outputs: any;
   error: string | null;
   created_at: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  cost_usd?: number;
   workstation_skills: {
     name: string;
   } | null;
@@ -445,7 +449,7 @@ export default function OnboardingHub() {
               </p>
             ) : (
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', textAlign: 'left' }}>
+                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', textAlign: 'left' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--muted)' }}>
                       <th style={{ padding: '0.75rem 1rem' }}>Timestamp</th>
@@ -453,6 +457,8 @@ export default function OnboardingHub() {
                       <th style={{ padding: '0.75rem 1rem' }}>Operator</th>
                       <th style={{ padding: '0.75rem 1rem' }}>Niche / Business</th>
                       <th style={{ padding: '0.75rem 1rem' }}>Status</th>
+                      <th style={{ padding: '0.75rem 1rem' }}>Tokens Used</th>
+                      <th style={{ padding: '0.75rem 1rem' }}>Cost</th>
                       <th style={{ padding: '0.75rem 1rem' }}>Actions</th>
                     </tr>
                   </thead>
@@ -484,6 +490,12 @@ export default function OnboardingHub() {
                           }}>
                             {run.status}
                           </span>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', color: 'var(--muted)', fontSize: '0.8125rem' }}>
+                          {run.total_tokens ? run.total_tokens.toLocaleString() : '0'}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', color: 'var(--accent)', fontSize: '0.8125rem', fontWeight: 600 }}>
+                          {run.cost_usd ? `$${Number(run.cost_usd).toFixed(4)}` : '$0.0000'}
                         </td>
                         <td style={{ padding: '0.75rem 1rem' }}>
                           <button
@@ -533,9 +545,7 @@ export default function OnboardingHub() {
             </button>
             <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text)', marginBottom: '1rem' }}>
               Execution Run Details
-            </h3>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            </h3>             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', fontSize: '0.875rem' }}>
                 <div>
                   <span style={{ color: 'var(--muted)' }}>Skill Name:</span>
@@ -553,6 +563,22 @@ export default function OnboardingHub() {
                   <span style={{ color: 'var(--muted)' }}>Run ID:</span>
                   <div style={{ color: 'var(--text)', fontSize: '0.75rem', marginTop: '0.125rem' }}>{selectedRun.id}</div>
                 </div>
+                {selectedRun.total_tokens !== undefined && selectedRun.total_tokens > 0 && (
+                  <>
+                    <div>
+                      <span style={{ color: 'var(--muted)' }}>Tokens (In/Out/Total):</span>
+                      <div style={{ color: 'var(--text)', marginTop: '0.125rem' }}>
+                        {selectedRun.input_tokens?.toLocaleString()} / {selectedRun.output_tokens?.toLocaleString()} / <strong>{selectedRun.total_tokens?.toLocaleString()}</strong>
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--muted)' }}>Estimated Cost (USD):</span>
+                      <div style={{ color: 'var(--accent)', fontWeight: 600, marginTop: '0.125rem' }}>
+                        ${Number(selectedRun.cost_usd).toFixed(4)}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Inputs */}
