@@ -15,6 +15,7 @@ const NAV = [
   { href: '/memory', icon: '🧠', label: 'Memory' },
   { href: '/openhuman', icon: '👤', label: 'OpenHuman' },
   { href: '/nws-context', icon: '⚡', label: 'NWS Context' },
+  { href: '/onboarding', icon: '🚀', label: 'Onboarding Hub' },
   { href: '/settings', icon: '⚙️', label: 'Settings' },
 ];
 
