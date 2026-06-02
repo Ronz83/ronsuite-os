@@ -25,6 +25,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const isPublic = pathname.startsWith('/auth') ||
+    pathname.startsWith('/api') ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/icons') ||
     pathname === '/manifest.json' ||
