@@ -1,49 +1,49 @@
-import { anthropic, MODEL } from '../../anthropic';
+import { qwen } from '../../qwen';
 import { createBrokerClient } from '../../supabase/broker';
 
 // Define industry blueprints containing core leaks, entry offers, and workflow rules
 const industryBlueprints: Record<string, string> = {
   real_estate: `
-- Core Leak to solve: Zillow & ad leads grow cold immediately (80% drop in close rates if response >5 mins).
+- Core Leak to solve: Inquiries from property portals (Zillow in the US, Rightmove in the UK, Cariblist in the Caribbean) and website chat widgets grow cold instantly, causing an 80% drop in lead close rates.
 - Entry Offer: 24/7 AI Lead Response Agent that qualifies and schedules showings.
-- AI Chatbot (Luna) Guidelines: Actively responds to incoming SMS/web leads within 60s, qualifies their budget, timeline, and pre-approval status, then shares calendar booking links.
-- Automation flow rules: Instantly trigger SMS/Email within 60 seconds of a new Zillow/Facebook ad lead, notify agent, and route to "New Lead" pipeline stage.
+- AI Chatbot (Aria) Guidelines: Actively responds to incoming WhatsApp or Webchat leads within 60s, qualifies their budget, timeline, and pre-approval status, then shares calendar booking links.
+- Automation flow rules: Instantly trigger WhatsApp/Email within 60 seconds of a new portal/web lead, notify agent, and route to "New Lead" pipeline stage. Focus on organic database reactivation and portal leads; no paid ads.
 `,
   home_services: `
 - Core Leak to solve: 27% missed calls leak high-ticket repair inquiries (plumbing/HVAC/electric worth up to $3,500 each).
-- Entry Offer: 24/7 AI Voice Receptionist & Missed Call Text-Back.
-- AI Chatbot (Luna) Guidelines: Answers on first ring, qualifies repair urgency, schedules technicians, and triggers SMS follow-ups for missed calls.
-- Automation flow rules: Trigger missed call text-back within 60s, notify on-call emergency technician for hot dispatches, and trigger review reminders upon job completion.
+- Entry Offer: 24/7 AI Voice Receptionist & Missed Call WhatsApp Text-Back.
+- AI Chatbot (Aria) Guidelines: Answers on first ring, qualifies repair urgency, schedules technicians, and triggers WhatsApp follow-ups for missed calls.
+- Automation flow rules: Trigger missed call WhatsApp text-back within 60s, notify on-call emergency technician for hot dispatches, and trigger Review AI reminders (ratings 4-5 auto-posted, 1-3 routed to feedback collection) upon job completion.
 `,
   hospitality: `
 - Core Leak to solve: High seasonal booking inquiries drop off after-hours or during peak seasons.
 - Entry Offer: Multi-Channel Booking & FAQ Assistant.
-- AI Chatbot (Luna) Guidelines: Integrates across Instagram DM, Google, SMS, and Webchat. Resolves FAQs and coordinates booking reservation spots.
-- Automation flow rules: Automate booking confirmations, calendar reminders, and coordinates waitlist drops for peak hours to eliminate no-shows.
+- AI Chatbot (Aria) Guidelines: Integrates across Instagram DM, WhatsApp, and Webchat. Resolves FAQs and coordinates booking reservation spots.
+- Automation flow rules: Automate booking confirmations via WhatsApp/Email, calendar reminders, and coordinates waitlist drops for peak hours to eliminate no-shows.
 `,
   veterinary: `
 - Core Leak to solve: Pet emergencies occur after-hours causing client drop-offs to emergency competitors.
 - Entry Offer: AI Clinic Receptionist & Patient Recall System.
-- AI Chatbot (Luna) Guidelines: Warm, compassionate receptionist handling clinic triage, intake forms, scheduling, and emergency triage routing.
-- Automation flow rules: Automated wellness and vaccine reminder drips synced with pets' milestone dates, and cancellation gap filler triggers.
+- AI Chatbot (Aria) Guidelines: Warm, compassionate receptionist handling clinic triage, intake forms, scheduling, and emergency triage routing.
+- Automation flow rules: Automated wellness and vaccine reminder drips sent via WhatsApp/Email synced with pets' milestone dates, and cancellation gap filler triggers.
 `,
   dental: `
 - Core Leak to solve: Case acceptance failure (~20% hygienist recare leak, crowns/root canals unbooked due to pricing confusion).
 - Entry Offer: AI Treatment Plan Follow-Up System.
-- AI Chatbot (Luna) Guidelines: Explains procedure details in plain English, calculates insurance estimates, lists financing plans, and drives 1-click booking.
-- Automation flow rules: Follow up within 1 hour post-exit with procedure breakdowns, and schedule follow-ups on days 3, 7, and 14 for unaccepted treatment plans.
+- AI Chatbot (Aria) Guidelines: Explains procedure details in plain English, calculates insurance estimates, lists financing plans, and drives 1-click booking.
+- Automation flow rules: Follow up via WhatsApp/Email within 1 hour post-exit with procedure breakdowns, and schedule follow-ups on days 3, 7, and 14 for unaccepted treatment plans.
 `,
   death_care: `
 - Core Leak to solve: Multitasking directors neglect high-margin pre-need pre-paid contracts (20-35% of revenue).
 - Entry Offer: AI Arrangement & Intake Assistant.
-- AI Chatbot (Luna) Guidelines: Calm, dignified, respectful assistant conducting family intake, triggering arrangement workflows, and coordinating meetings.
-- Automation flow rules: Nurture pre-need leads over 12-18 months using educational planning guides and aftercare check-ins.
+- AI Chatbot (Aria) Guidelines: Calm, dignified, respectful assistant conducting family intake, triggering arrangement workflows, and coordinating meetings.
+- Automation flow rules: Nurture pre-need leads over 12-18 months using educational planning guides and aftercare check-ins via WhatsApp/Email.
 `,
   automotive: `
 - Core Leak to solve: Safe declined technician recommendations (brakes, leaks) from low-cost oil changes go unchased.
 - Entry Offer: AI Service Recommendation Follow-Up Agent.
-- AI Chatbot (Luna) Guidelines: Pulls safety recommendations, drafts clear safety concerns, schedules service repairs, and handles vehicle trade-in inquiries.
-- Automation flow rules: Trigger safety-urgency messages over 2-week to 60-day sequences, and real-time CSI alert surveys on low ratings post-visit.
+- AI Chatbot (Aria) Guidelines: Pulls safety recommendations, drafts clear safety concerns, schedules service repairs, and handles vehicle trade-in inquiries.
+- Automation flow rules: Trigger safety-urgency messages via WhatsApp/Email over 2-week to 60-day sequences, and real-time CSI alert surveys on low ratings post-visit.
 `
 };
 
@@ -60,7 +60,7 @@ export async function ghlBusinessOnboardingHandler(inputs: Record<string, any>):
     brandStyle,
     mainCTA,
     businessHours = 'Mon-Fri 9am-5pm',
-    communicationChannels = ['SMS', 'Email', 'Web Chat'],
+    communicationChannels = ['WhatsApp', 'Email', 'Web Chat'],
     seoLocation,
     mainSeoServices,
     specialBusinessDetails = 'None',
@@ -142,7 +142,7 @@ export async function ghlBusinessOnboardingHandler(inputs: Record<string, any>):
 
   const blueprintText = industryTemplate ? `\nIndustry Niche Guidelines:\n${industryBlueprints[industryTemplate] || ''}` : '';
 
-  // 2. Generate customized prompts using Claude 3.5 Sonnet
+  // 2. Generate customized prompts using Claude 3.5 Sonnet (using Qwen 3.7 Max here)
   const systemPrompt = `You are the master AI Business-Building system and Senior GHL Architect.
 Based on the client onboarding intake information provided, your job is to output THREE completely separate, copy-and-paste ready prompts for GoHighLevel AI tools.
 
@@ -172,8 +172,12 @@ ${blueprintText}
 ==================================================
 GLOBAL SYSTEM REQUIREMENTS
 ==================================================
-All prompts should reflect this specific business niche, use proper industry terminology, optimize for local SEO search, and build human-sounding conversational flow.
-The chatbot and voice agents must be named "Luna" and have a warm, professional, employee-like personality.
+1. All prompts should reflect this specific business niche, use proper industry terminology, optimize for local SEO search, and build human-sounding conversational flow.
+2. The chatbot and voice agents must be named "Aria" and have a warm, professional, employee-like personality.
+3. Outreach Channels: Strictly restrict all outreach and automated triggers to WhatsApp and Email. Do NOT use SMS.
+4. Paid Ads Exclusion: Do NOT include references to paid ads or paid ad traffic. Focus solely on organic widgets, database reactivation, local registers/directories, and organic outreach.
+5. Review AI Rules: Incorporate Review AI star rating logic: automatically route 4-5 star ratings to the public review profiles (e.g. Google Business Profile), and route 1-3 star ratings to an internal feedback collection workflow (suggestive/private triage).
+6. Multi-Regional Setup: Support operations and directory sourcing tailored to the target region (US, UK, or Caribbean), using regional portal equivalents (e.g., Zillow for US, Rightmove for UK, Cariblist for Caribbean).
 
 ==================================================
 PROMPT REQUIREMENTS & TEMPLATES
@@ -187,9 +191,9 @@ It must describe a mobile-responsive, conversion-focused premium local site with
 - Local SEO structures targeting SEO Location "${seoLocation || location}".
 
 ### 2. AI BUSINESS OPERATING SYSTEM PROMPT (ASK AI)
-Create a standalone training prompt for the "Luna" chatbot and voice agent.
+Create a standalone training prompt for the "Aria" chatbot and voice agent.
 It must instruct how to:
-- Act as warm, professional assistant Luna.
+- Act as warm, professional assistant Aria.
 - Handle FAQs, qualify leads, explain services, and book meetings directly.
 - Walk through a standard sales pipeline: New Lead, Contacted, Qualified, Appointment Scheduled, Appointment Completed, Proposal Sent, Follow-up, Closed Won/Lost, Reactivation.
 - Avoid robotic speech, handle objections naturally, and capture scheduling details without double-booking.
@@ -197,8 +201,8 @@ It must instruct how to:
 ### 3. MASTER AUTOMATION SYSTEM PROMPT (AUTOMATION BUILDER)
 Create a single centralized automation specification for the GoHighLevel workflow builder.
 Must explain how to configure:
-- Inbound Lead Capture trigger (Form, SMS, call, booking).
-- Instant Lead Response (SMS & Email with niche-appropriate copy).
+- Inbound Lead Capture trigger (Form, WhatsApp, call, booking).
+- Instant Lead Response (WhatsApp & Email with niche-appropriate copy).
 - Multi-step Lead Nurture sequences with delays.
 - Appointment Automation logic (reminders, confirmations, follow-ups).
 - Pipeline movement triggers (auto-marking won/lost, status updates).
@@ -236,24 +240,24 @@ END MASTER AUTOMATION SYSTEM PROMPT
 
 Do not output any conversational preamble or postscript. Start directly with the first divider.`;
 
-  const modelToUse = MODEL || 'claude-3-5-sonnet-20241022';
+  const modelToUse = 'qwen-3.7-max';
   
-  const response = await anthropic.messages.create({
+  const response = await qwen.createCompletion({
     model: modelToUse,
-    max_tokens: 4000,
+    max_tokens: 8000,
     messages: [
       { role: 'user', content: systemPrompt }
     ]
   });
 
-  const outputText = response.content[0]?.type === 'text' ? response.content[0].text : '';
+  const outputText = response.content[0]?.text || '';
 
   const inputTokens = response.usage?.input_tokens || 0;
   const outputTokens = response.usage?.output_tokens || 0;
-  const totalTokens = inputTokens + outputTokens;
+  const totalTokens = response.usage?.total_tokens || (inputTokens + outputTokens);
   
-  // Cost calculation for Claude 3.5 Sonnet: $3/MT input, $15/MT output
-  const costUsd = (inputTokens * 0.000003) + (outputTokens * 0.000015);
+  // Cost calculation for Qwen 3.7 Max: $6/M input tokens, $20/M output tokens
+  const costUsd = (inputTokens * 0.000006) + (outputTokens * 0.00002);
 
   return {
     outputText,
