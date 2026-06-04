@@ -9,6 +9,7 @@ const NAV = [
   { href: '/hermes', icon: '🤖', label: 'Hermes' },
   { href: '/chat', icon: '💬', label: 'Chat' },
   { href: '/boardroom', icon: '🤝', label: 'Boardroom' },
+  { href: '/meeting-copilot', icon: '📞', label: 'Meeting Copilot' },
   { href: '/projects', icon: '🗂', label: 'Projects' },
   { href: '/goals', icon: '🎯', label: 'Goals' },
   { href: '/board', icon: '📋', label: 'Board' },
