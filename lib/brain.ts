@@ -1,5 +1,6 @@
 import { anthropic } from './anthropic';
 import { createServiceClient } from './supabase/service';
+import { brainContextString } from './brain/unified';
 
 function parseJSON(text: string) {
   const clean = text.replace(/```json|```/g, '').trim();
@@ -134,6 +135,14 @@ export async function makeSystemPromptDynamic(prompt: string, serviceClient: any
       const skillsBlock = `\n\nRegistered Autonomous Skills:\nYou have access to the following pre-built registered skills. When Ronald asks you to perform one of these actions, call the run_registered_skill tool passing the matched prompt and necessary input parameters:\n` +
         dbSkills.map((s: any) => `- **${s.name}**: ${s.description} (Triggers: ${s.trigger_phrases.map((tp: string) => `"${tp}"`).join(', ')})`).join('\n');
       updated += skillsBlock;
+    }
+
+    // Append unified brain shared context (capped for prompt-size/cost control)
+    try {
+      const contextStr = await brainContextString(undefined, 12);
+      updated += `\n\n${contextStr}`;
+    } catch (e) {
+      console.error("⚠️ UNIFIED BRAIN READ FAILED — agents running without shared context:", e);
     }
 
     return updated;
