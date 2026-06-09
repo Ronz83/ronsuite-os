@@ -434,7 +434,8 @@ export function ChatInterface() {
                   {agent.role === 'developer' && '💻'}
                   {agent.role === 'researcher' && '🔍'}
                   {agent.role === 'operations' && '📊'}
-                  {!['orchestrator', 'planner', 'developer', 'researcher', 'operations'].includes(agent.role) && '🤖'}
+                  {agent.role === 'designer' && '🎨'}
+                  {!['orchestrator', 'planner', 'developer', 'researcher', 'operations', 'designer'].includes(agent.role) && '🤖'}
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
@@ -479,7 +480,8 @@ export function ChatInterface() {
               {selectedAgent?.role === 'developer' && '💻'}
               {selectedAgent?.role === 'researcher' && '🔍'}
               {selectedAgent?.role === 'operations' && '📊'}
-              {!['orchestrator', 'planner', 'developer', 'researcher', 'operations'].includes(selectedAgent?.role || '') && '🤖'}
+              {selectedAgent?.role === 'designer' && '🎨'}
+              {!['orchestrator', 'planner', 'developer', 'researcher', 'operations', 'designer'].includes(selectedAgent?.role || '') && '🤖'}
             </div>
             <div>
               <div style={{ fontWeight: 600, fontSize: '0.9375rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
@@ -530,6 +532,7 @@ export function ChatInterface() {
                 {selectedAgent.role === 'developer' && '💻'}
                 {selectedAgent.role === 'researcher' && '🔍'}
                 {selectedAgent.role === 'operations' && '📊'}
+                {selectedAgent.role === 'designer' && '🎨'}
               </div>
               <p style={{ fontSize: '1.125rem', fontWeight: 500, color: 'var(--text)', marginBottom: '0.5rem' }}>
                 {selectedAgent.name} Agent
@@ -540,6 +543,7 @@ export function ChatInterface() {
                 {selectedAgent.role === 'developer' && 'I review architectures, inspect codebase layouts, and write technical implementation plans.'}
                 {selectedAgent.role === 'researcher' && 'I search the web for fact-finding, competitive intelligence, and project context.'}
                 {selectedAgent.role === 'operations' && 'I assess active tasks, highlight blocked items, and summarize project statuses.'}
+                {selectedAgent.role === 'designer' && 'I am the Gemma 4 agent, specializing in website creation, UI/UX design, and rapid front-end prototyping.'}
               </p>
               <p style={{ fontSize: '0.8125rem', marginTop: '0.75rem', fontStyle: 'italic' }}>
                 {selectedAgent.role === 'orchestrator' && 'Try: "What agent should I use to build a new feature?"'}
@@ -547,6 +551,7 @@ export function ChatInterface() {
                 {selectedAgent.role === 'developer' && 'Try: "Plan a Supabase Realtime feature update spec"'}
                 {selectedAgent.role === 'researcher' && 'Try: "What are the latest updates on Tailwind v4?"'}
                 {selectedAgent.role === 'operations' && 'Try: "Which tasks are currently blocked or in progress?"'}
+                {selectedAgent.role === 'designer' && 'Try: "Create a modern premium hero section for our Hauling site using HSL colors and gradients."'}
               </p>
             </div>
           )}

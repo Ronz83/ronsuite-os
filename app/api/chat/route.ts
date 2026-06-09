@@ -104,14 +104,16 @@ export async function POST(req: Request) {
     }
   }
 
+  let agent: any = null;
   if (agentId) {
-    const { data: agent } = await serviceClient
+    const { data: agentData } = await serviceClient
       .from('agents')
       .select('*')
       .eq('id', agentId)
       .single();
 
-    if (agent) {
+    if (agentData) {
+      agent = agentData;
       systemPrompt = await makeSystemPromptDynamic(agent.system_prompt, serviceClient);
       agentName = agent.name;
       
@@ -259,7 +261,7 @@ export async function POST(req: Request) {
 
       while (continueLoop && loopCount < MAX_LOOPS) {
         loopCount++;
-        const modelToUse = hasImages ? 'google/gemini-2.5-flash' : MODEL;
+        const modelToUse = hasImages ? 'google/gemini-2.5-flash' : (agent?.model || MODEL);
         // Build Anthropic request options
         const anthropicParams: Parameters<typeof anthropic.messages.create>[0] = {
           model: modelToUse,
