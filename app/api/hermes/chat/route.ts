@@ -16,13 +16,69 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabaseAuth.auth.getUser();
   if (!user) return new Response('Unauthorized', { status: 401 });
 
-  const { message, session_id, context_id } = await req.json() as {
+  const { message, session_id, context_id, attachmentIds } = await req.json() as {
     message: string;
     session_id?: string;
     context_id?: string;
+    attachmentIds?: string[];
   };
 
   const serviceClient = createServiceClient();
+
+  // Load and process attachments if any
+  let attachmentsData: any[] = [];
+  let hasImages = false;
+
+  if (attachmentIds && attachmentIds.length > 0) {
+    try {
+      const { data, error } = await serviceClient
+        .from('hermes_attachments')
+        .select('*')
+        .in('id', attachmentIds);
+      if (!error && data) {
+        attachmentsData = data;
+        hasImages = attachmentsData.some(a => a.file_type.startsWith('image/'));
+
+        // Generate image descriptions in background using a cheap vision model if not already present
+        for (const attachment of attachmentsData) {
+          if (attachment.file_type.startsWith('image/') && !attachment.extracted_text) {
+            try {
+              const descResult = await anthropic.messages.create({
+                model: 'google/gemini-2.5-flash',
+                messages: [
+                  {
+                    role: 'user',
+                    content: [
+                      { type: 'text', text: 'Describe this image in detail, listing all key text, features, code snippets, or charts visible in it.' },
+                      {
+                        type: 'image_url',
+                        image_url: {
+                          url: attachment.content
+                        }
+                      }
+                    ]
+                  }
+                ],
+                max_tokens: 500
+              });
+              const descText = descResult.content?.[0]?.text || '';
+              if (descText) {
+                attachment.extracted_text = descText;
+                await serviceClient
+                  .from('hermes_attachments')
+                  .update({ extracted_text: descText })
+                  .eq('id', attachment.id);
+              }
+            } catch (descErr) {
+              console.error('[Vision] Failed to compile description:', descErr);
+            }
+          }
+        }
+      }
+    } catch (attachmentErr) {
+      console.error('[Attachments] Failed to load attachments:', attachmentErr);
+    }
+  }
 
   // 1. Fetch hermes_context
   let contextQuery = serviceClient.from('hermes_context').select('*');
@@ -297,10 +353,36 @@ YOUR ROLE:
     content: m.content
   }));
 
-  messages.push({ role: 'user', content: message });
+  // Construct current turn content injection
+  const currentContent: any[] = [{ type: 'text' as const, text: message }];
+  for (const attachment of attachmentsData) {
+    if (attachment.file_type.startsWith('image/')) {
+      currentContent.push({
+        type: 'image_url' as const,
+        image_url: {
+          url: attachment.content
+        }
+      });
+    } else {
+      // Text file (txt, md, code, csv)
+      currentContent[0].text += `\n\n[File Attachment: ${attachment.file_name}]\n${attachment.content}`;
+    }
+  }
+
+  messages.push({ role: 'user', content: currentContent as any });
+
+  // Clean representation to store in database
+  let dbUserContent = message;
+  for (const attachment of attachmentsData) {
+    if (attachment.file_type.startsWith('image/')) {
+      dbUserContent += `\n\n[Attached Image: ${attachment.file_name} - Description: ${attachment.extracted_text || 'processing...'}]`;
+    } else {
+      dbUserContent += `\n\n[Attached File Reference: ${attachment.file_name} (ID: ${attachment.id})]`;
+    }
+  }
 
   // 1. Model Selection
-  const modelToUse = 'qwen/qwen3.7-max';
+  const modelToUse = hasImages ? 'google/gemini-2.5-flash' : 'qwen/qwen3.7-max';
 
   // 2. Brief Mode check
   const isBrief = message.toLowerCase().includes('brief');
@@ -337,11 +419,11 @@ YOUR ROLE:
         }
       }
 
-      // Save user message to database
+      // Save user message to database using clean text representation
       await serviceClient.from('hermes_messages').insert({
         session_id: activeSessionId,
         role: 'user',
-        content: message
+        content: dbUserContent
       });
 
       // Save assistant response to database
