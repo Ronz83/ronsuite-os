@@ -41,6 +41,13 @@ export function ChatInterface() {
   const [goalContext, setGoalContext] = useState<any>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
+  // Attachment and Voice States/Refs
+  const [uploadedFiles, setUploadedFiles] = useState<{ id: string; name: string; type: string; }[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<any>(null);
+
   // Helper to load active session from Supabase
   const loadActiveSession = useCallback(async (agentId: string, goalId: string | null, targetGoalCtx?: any) => {
     const activeGoalCtx = targetGoalCtx || goalContext;
@@ -189,16 +196,108 @@ export function ChatInterface() {
     setCurrentSessionId(null);
   };
 
+  const uploadFile = async (file: File) => {
+    setUploading(true);
+    try {
+      const reader = new FileReader();
+      const uploadPromise = new Promise<string>((resolve) => {
+        reader.onload = (e) => resolve(e.target?.result as string);
+        if (file.type.startsWith('image/') || file.type === 'application/pdf') {
+          reader.readAsDataURL(file);
+        } else {
+          reader.readAsText(file);
+        }
+      });
+
+      const fileContent = await uploadPromise;
+
+      const res = await fetch('/api/chat/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName: file.name,
+          fileType: file.type,
+          fileContent
+        })
+      });
+      const json = await res.json();
+      if (json.success && json.attachment) {
+        setUploadedFiles(prev => [...prev, {
+          id: json.attachment.id,
+          name: json.attachment.file_name,
+          type: json.attachment.file_type
+        }]);
+      } else {
+        alert('Failed to upload attachment: ' + json.error);
+      }
+    } catch (err: any) {
+      console.error('File upload error:', err);
+      alert('Upload error: ' + err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file) {
+          await uploadFile(file);
+        }
+      }
+    }
+  };
+
+  const toggleListening = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+    } else {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        alert("Speech recognition is not supported in this browser.");
+        return;
+      }
+      const rec = new SpeechRecognition();
+      rec.continuous = false;
+      rec.interimResults = false;
+      rec.lang = 'en-US';
+      rec.onstart = () => setIsListening(true);
+      rec.onend = () => setIsListening(false);
+      rec.onerror = (e: any) => {
+        console.error(e);
+        setIsListening(false);
+      };
+      rec.onresult = (event: any) => {
+        const resultText = event.results[0][0].transcript;
+        setInput(prev => prev + (prev ? ' ' : '') + resultText);
+      };
+      rec.start();
+      recognitionRef.current = rec;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.stop();
+    };
+  }, []);
+
   const sendMessage = useCallback(async () => {
-    if (!input.trim() || streaming || !selectedAgent) return;
-    const userMsg: Message = { id: crypto.randomUUID(), role: 'user', content: input.trim() };
+    if ((!input.trim() && uploadedFiles.length === 0) || streaming || !selectedAgent) return;
+    const userMsg: Message = { id: crypto.randomUUID(), role: 'user', content: input.trim() || `[Sent ${uploadedFiles.length} file(s)]` };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
+    const filesToSend = [...uploadedFiles];
+    setUploadedFiles([]);
     setStreaming(true);
-
+ 
     const assistantId = crypto.randomUUID();
     setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '', toolCalls: [] }]);
-
+ 
     abortRef.current = new AbortController();
     try {
       const res = await fetch('/api/chat', {
@@ -209,23 +308,24 @@ export function ChatInterface() {
           agentId: selectedAgent.id,
           goalId: currentGoalId || undefined,
           sessionId: currentSessionId || undefined,
+          attachmentIds: filesToSend.map(f => f.id)
         }),
         signal: abortRef.current.signal,
       });
-
+ 
       if (!res.ok || !res.body) throw new Error('Stream failed');
-
+ 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-
+ 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
-
+ 
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
           try {
@@ -491,9 +591,72 @@ export function ChatInterface() {
           padding: '1.25rem 1.5rem', borderTop: '1px solid var(--border)',
           background: 'var(--surface)'
         }}>
+          {/* Attachment Tags Preview */}
+          {uploadedFiles.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              {uploadedFiles.map(file => (
+                <div key={file.id} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.375rem',
+                  background: 'rgba(99, 102, 241, 0.1)',
+                  border: '1px solid rgba(99, 102, 241, 0.2)',
+                  padding: '0.25rem 0.6rem',
+                  borderRadius: '6px',
+                  fontSize: '0.8rem',
+                  color: 'var(--accent)'
+                }}>
+                  <span>📎 {file.name}</span>
+                  <button
+                    onClick={() => setUploadedFiles(prev => prev.filter(f => f.id !== file.id))}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '0.75rem', padding: 0, marginLeft: '4px' }}
+                  >✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end' }}>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) uploadFile(file);
+              }}
+              style={{ display: 'none' }}
+              accept=".txt,.md,.pdf,.csv,.js,.jsx,.ts,.tsx,.json,.py,.go,.rs,.c,.cpp,.html,.css,image/*"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={streaming || uploading}
+              style={{
+                background: 'var(--surface-2)', border: '1px solid var(--border)',
+                borderRadius: '12px', width: '48px', height: '48px', fontSize: '1.25rem',
+                cursor: streaming || uploading ? 'not-allowed' : 'pointer', color: 'var(--muted)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+              }}
+              title="Upload file or paste image"
+            >
+              📎
+            </button>
+            <button
+              onClick={toggleListening}
+              disabled={streaming}
+              style={{
+                background: isListening ? 'rgba(244,63,94,0.15)' : 'var(--surface-2)',
+                border: `1px solid ${isListening ? 'var(--danger)' : 'var(--border)'}`,
+                borderRadius: '12px', width: '48px', height: '48px', fontSize: '1.25rem',
+                cursor: streaming ? 'not-allowed' : 'pointer', color: isListening ? 'var(--danger)' : 'var(--muted)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+              }}
+              title={isListening ? "Listening... click to stop" : "Voice input"}
+            >
+              {isListening ? '🎙️' : '🎤'}
+            </button>
             <textarea
               value={input}
+              onPaste={handlePaste}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
               placeholder={isOrchestrator ? "Chat with Hermes..." : "Set a goal or ask a question…"}
@@ -508,12 +671,12 @@ export function ChatInterface() {
               }}
             />
             <button
-              onClick={sendMessage} disabled={!input.trim() || streaming || !selectedAgent}
+              onClick={sendMessage} disabled={(!input.trim() && uploadedFiles.length === 0) || streaming || !selectedAgent}
               style={{
-                background: !input.trim() || streaming || !selectedAgent ? 'var(--border)' : 'var(--accent)',
+                background: (!input.trim() && uploadedFiles.length === 0) || streaming || !selectedAgent ? 'var(--border)' : 'var(--accent)',
                 color: 'var(--text)', border: 'none', borderRadius: '12px',
                 width: '48px', height: '48px', fontSize: '1.125rem',
-                cursor: !input.trim() || streaming || !selectedAgent ? 'not-allowed' : 'pointer',
+                cursor: (!input.trim() && uploadedFiles.length === 0) || streaming || !selectedAgent ? 'not-allowed' : 'pointer',
                 flexShrink: 0, transition: 'background 0.15s'
               }}
             >↑</button>
