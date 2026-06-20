@@ -18,19 +18,20 @@ function parseJSON(text: string) {
 export async function extractAndSaveMemory(userMsg: string, agentResponse: string) {
   const serviceClient = createServiceClient();
   try {
-    const prompt = `Review this conversation exchange and decide if it contains something worth adding to permanent memory — a decision, a new tool, a project update, a preference, a blocker, or a priority shift. Routine status queries, test messages, and things already in memory do not qualify.
+    const prompt = `Review this conversation exchange. Has the user assigned a task, and has the agent just completed it? 
+If a task was assigned and completed, extract the most important macro-level facts, strategic decisions, or global results worth adding to the permanent organizational brain. (Ignore micro-level routine chatter; focus on high-level lessons and architecture).
 
 If yes, respond with JSON only:
 {
   "save": true,
   "title": "short title for the memory entry",
-  "content": "the fact or decision to remember, written as a clear standalone sentence",
-  "tags": ["relevant", "tags"],
+  "summary": "a slightly longer summary of what was completed",
+  "content": "the core fact, decision, or result to remember, written as a clear standalone sentence",
   "project_slug": "caricom-business | ticketflows | nws | ronsuite-os | null if global",
   "wiki_file": "the most relevant Obsidian wiki file path e.g. wiki/ronsuite_os.md or wiki/workspace_setup.md"
 }
 
-If no, respond with JSON only:
+If no macro-level task was completed, respond with JSON only:
 { "save": false }
 
 Exchange:
@@ -64,24 +65,31 @@ Agent: ${agentResponse}`;
         if (proj) projectId = proj.id;
       }
 
-      // Insert into memory table
+      // Generate embedding dynamically
+      const { generateEmbedding } = await import('./embeddings');
+      const embedding = await generateEmbedding(`${json.title} ${json.summary} ${json.content}`);
+
+      // Insert into brain_entries table
       const { error: memoryError } = await serviceClient
-        .from('memory')
+        .from('brain_entries')
         .insert({
+          agent: 'system',
+          entry_type: 'decision',
           title: json.title,
-          content: json.content,
-          tags: Array.isArray(json.tags) ? json.tags : [],
-          project_id: projectId,
-          source: 'agent'
+          summary: json.summary || json.content,
+          detail: { content: json.content },
+          project: json.project_slug || 'global',
+          source: 'agent',
+          embedding: embedding
         });
 
       if (memoryError) {
-        console.error("[Auto-Memory] Error inserting memory:", memoryError);
+        console.error("[Auto-Memory] Error inserting memory into brain_entries:", memoryError);
       } else {
-        console.log("[Auto-Memory] Memory entry created successfully");
+        console.log("[Auto-Memory] Memory entry created successfully in brain_entries");
       }
 
-      // Insert into brain_queue table
+      // Insert into brain_queue table for Obsidian sync
       const { error: queueError } = await serviceClient
         .from('brain_queue')
         .insert({
@@ -93,10 +101,10 @@ Agent: ${agentResponse}`;
       if (queueError) {
         console.error("[Auto-Memory] Error inserting brain_queue:", queueError);
       } else {
-        console.log("[Auto-Memory] Brain queue entry created successfully");
+        console.log("[Auto-Memory] Brain queue entry created successfully for Obsidian");
       }
     } else {
-      console.log("[Auto-Memory] Exchange classified as not worthy of saving");
+      console.log("[Auto-Memory] Exchange classified as not worthy of saving (no task completed)");
     }
   } catch (err) {
     console.error("[Auto-Memory] Error in memory extraction pipeline:", err);
@@ -144,6 +152,17 @@ export async function makeSystemPromptDynamic(prompt: string, serviceClient: any
     } catch (e) {
       console.error("⚠️ UNIFIED BRAIN READ FAILED — agents running without shared context:", e);
     }
+
+    // Enforce Fable Architecture Macro-Scale Rules for all Boardroom agents
+    updated += `\n\n[CORE FABLE BEHAVIORAL RULES]
+You are operating within the Fable macro-scale architecture. You MUST strictly adhere to the following rules:
+1. PRE-PLAN: Deep, thorough planning is expected before execution.
+2. LEAD WITH OUTCOMES: Answer "what happened" first. Details and reasoning follow.
+3. GROUND CLAIMS: Only report what you have explicitly verified.
+4. STOP ONLY AT BOUNDARIES: Do not stall for permission unless it is a destructive/irreversible action.
+5. MATCH EFFORT: Move fast on routine tasks; use deep reasoning for complex tasks.
+6. PARALLELIZE BY DEFAULT: If tasks are independent, execute them concurrently.
+7. ARRIVE PRE-PLANNED: Never surface an open question without a proposed hypothesis.`;
 
     return updated;
   } catch (err) {

@@ -27,6 +27,7 @@ const OBSIDIAN_VAULT = env.OBSIDIAN_VAULT || 'C:\\Users\\Ronald\\.gemini\\antigr
 const rootEnvPath = path.join(__dirname, '..', '.env.local');
 let supabaseKey = '';
 let anthropicKey = '';
+let openrouterKey = '';
 if (fs.existsSync(rootEnvPath)) {
   const content = fs.readFileSync(rootEnvPath, 'utf8');
   content.split('\n').forEach(line => {
@@ -34,6 +35,8 @@ if (fs.existsSync(rootEnvPath)) {
     if (matchSupa) supabaseKey = matchSupa[1].trim();
     const matchAnth = line.match(/^ANTHROPIC_API_KEY=(.*)$/);
     if (matchAnth) anthropicKey = matchAnth[1].trim();
+    const matchOR = line.match(/^OPENROUTER_API_KEY=(.*)$/);
+    if (matchOR) openrouterKey = matchOR[1].trim();
   });
 }
 
@@ -217,30 +220,41 @@ async function runGemini(content, businessContext, ws) {
 }
 
 async function runClaude(content, businessContext, ws) {
-  console.log(`[Bridge] Running Claude via Anthropic API`);
+  console.log(`[Bridge] Running Claude via OpenRouter API`);
+
+  const messages = [];
+  if (businessContext) {
+    messages.push({ role: 'system', content: businessContext });
+  }
+  messages.push({ role: 'user', content });
 
   const body = {
-    model: 'claude-opus-4-8',
+    model: 'anthropic/claude-sonnet-4.6',
     max_tokens: 8096,
-    messages: [{ role: 'user', content }],
+    messages: messages,
     stream: true
   };
-  if (businessContext) body.system = businessContext;
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const apiKey = openrouterKey || env.OPENROUTER_API_KEY;
+    if (!apiKey) {
+      throw new Error('OPENROUTER_API_KEY is not defined in env files.');
+    }
+
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': anthropicKey,
-        'anthropic-version': '2023-06-01'
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://ronsuite-os.local',
+        'X-Title': 'RonSuite OS'
       },
       body: JSON.stringify(body)
     });
 
     if (!response.ok) {
       const err = await response.text();
-      ws.send(JSON.stringify({ type: 'error', agent: 'claude', message: `Anthropic API error: ${err}` }));
+      ws.send(JSON.stringify({ type: 'error', agent: 'claude', message: `OpenRouter API error: ${err}` }));
       return;
     }
 
@@ -255,14 +269,17 @@ async function runClaude(content, businessContext, ws) {
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
       for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6).trim();
-        try {
-          const parsed = JSON.parse(data);
-          if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'text_delta') {
-            ws.send(JSON.stringify({ type: 'text', agent: 'claude', text: parsed.delta.text }));
-          }
-        } catch {}
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === 'data: [DONE]') continue;
+        if (trimmed.startsWith('data: ')) {
+          try {
+            const parsed = JSON.parse(trimmed.slice(6));
+            const text = parsed.choices?.[0]?.delta?.content;
+            if (text) {
+              ws.send(JSON.stringify({ type: 'text', agent: 'claude', text }));
+            }
+          } catch {}
+        }
       }
     }
 

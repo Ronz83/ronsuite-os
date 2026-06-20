@@ -24,7 +24,8 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   const { pathname } = request.nextUrl;
 
-  const isPublic = pathname.startsWith('/auth') ||
+  const isLocalhost = request.nextUrl.hostname === 'localhost' || request.nextUrl.hostname === '127.0.0.1';
+  const isPublic = isLocalhost || pathname.startsWith('/auth') ||
     pathname.startsWith('/api') ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/icons') ||

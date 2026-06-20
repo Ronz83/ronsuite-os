@@ -134,29 +134,25 @@ export async function POST(req: Request) {
     }
   }
 
-  // Load matched memories using FTS search against the user's message
-  const searchTerms = message
-    .replace(/[^\w\s]/g, '')
-    .trim()
-    .split(/\s+/)
-    .filter(w => w.length > 2)
-    .join(' | ');
+  // Load matched memories using pgvector semantic search against the user's message
+  try {
+    const { generateEmbedding } = await import('@/lib/embeddings');
+    const messageEmbedding = await generateEmbedding(message);
 
-  if (searchTerms) {
-    try {
-      const { data: memories } = await serviceClient
-        .from('memory')
-        .select('title, content')
-        .textSearch('search_vector', searchTerms)
-        .limit(3);
+    const { data: memories, error } = await serviceClient.rpc('match_memories', {
+      query_embedding: messageEmbedding,
+      match_threshold: 0.75, // Only return relevant matches
+      match_count: 5 // Return top 5 matches
+    });
 
-      if (memories && memories.length > 0) {
-        const memoryBlocks = memories.map(m => `Title: ${m.title}\nContent: ${m.content}`).join('\n\n');
-        systemPrompt = `${systemPrompt}\n\n[CONTEXT FROM MEMORY]\nUse the following relevant context from memory for your response:\n${memoryBlocks}`;
-      }
-    } catch (err) {
-      console.error("Error searching memory database:", err);
+    if (error) {
+      console.error("Error calling match_memories RPC:", error);
+    } else if (memories && memories.length > 0) {
+      const memoryBlocks = memories.map((m: any) => `Memory: ${m.title}\nSummary: ${m.summary}\nDetail: ${JSON.stringify(m.detail)}`).join('\n\n');
+      systemPrompt = `${systemPrompt}\n\n[SEMANTIC CONTEXT FROM MEMORY]\nThe following past events, facts, or decisions closely match the user's current request. Use them to inform your response if relevant:\n${memoryBlocks}`;
     }
+  } catch (err) {
+    console.error("Error generating query embedding or searching memory database:", err);
   }
 
   const encoder = new TextEncoder();

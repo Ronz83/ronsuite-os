@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { ProjectCard } from '@/components/ProjectCard';
 import { Plus, X, AlertTriangle } from 'lucide-react';
+import { AgentGrid } from '@/components/AgentGrid';
 
 interface Project {
   id: string;
@@ -18,12 +19,11 @@ interface Project {
 }
 
 const COLOR_PRESETS = [
-  { name: 'Indigo', value: '#6366f1' },
-  { name: 'Teal', value: '#065c79' },
-  { name: 'Orange', value: '#ea580c' },
-  { name: 'Purple', value: '#7c3aed' },
-  { name: 'Green', value: '#22c55e' },
-  { name: 'Rose', value: '#f43f5e' },
+  { name: 'Blue', value: '#0052cc' },
+  { name: 'Teal', value: '#00875a' },
+  { name: 'Orange', value: '#ffab00' },
+  { name: 'Purple', value: '#403294' },
+  { name: 'Red', value: '#de350b' },
 ];
 
 export default function DashboardPage() {
@@ -40,7 +40,7 @@ export default function DashboardPage() {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [description, setDescription] = useState('');
-  const [color, setColor] = useState('#6366f1');
+  const [color, setColor] = useState('#0052cc');
   const [status, setStatus] = useState<'active' | 'paused' | 'archived'>('active');
   const [saving, setSaving] = useState(false);
 
@@ -86,7 +86,7 @@ export default function DashboardPage() {
     setName('');
     setSlug('');
     setDescription('');
-    setColor('#6366f1');
+    setColor('#0052cc');
     setStatus('active');
     setIsOpen(true);
   };
@@ -168,32 +168,37 @@ export default function DashboardPage() {
   };
 
   return (
-    <div style={{ padding: '2.5rem', maxWidth: '1200px', margin: '0 auto' }}>
+    <div style={{ padding: '2.5rem', maxWidth: '1400px', margin: '0 auto', background: 'var(--bg)', minHeight: '100vh' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text)' }}>Command Center</h1>
-          <p style={{ color: 'var(--muted)', marginTop: '0.25rem' }}>All projects, live from Supabase</p>
+          <h1 style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em' }}>Command Center</h1>
+          <p style={{ color: 'var(--muted)', marginTop: '0.375rem', fontSize: '1rem' }}>System orchestration and live status</p>
         </div>
+      </div>
+
+      <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text)', marginBottom: '1.25rem' }}>Active Agents</h2>
+      <AgentGrid />
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', marginTop: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text)' }}>Project Pipeline</h2>
         <button
+          className="btn-metallic"
           onClick={handleOpenAdd}
           style={{
-            background: 'var(--accent)',
-            color: 'var(--text)',
-            border: 'none',
-            borderRadius: '10px',
+            backgroundColor: 'var(--accent)',
+            color: '#ffffff',
+            borderRadius: '8px',
             padding: '0.625rem 1.25rem',
             fontWeight: 600,
-            cursor: 'pointer',
             fontFamily: 'var(--font-ui)',
             display: 'flex',
             alignItems: 'center',
             gap: '0.5rem',
-            transition: 'all 0.2s',
           }}
         >
-          <Plus size={18} />
-          <span>Add Project</span>
+          <Plus size={18} className="icon-float" />
+          <span>New Project</span>
         </button>
       </div>
 
@@ -364,16 +369,18 @@ export default function DashboardPage() {
                         type="button"
                         onClick={() => setColor(preset.value)}
                         title={preset.name}
+                        className="metallic-badge"
                         style={{
                           width: '24px',
                           height: '24px',
                           borderRadius: '50%',
-                          background: preset.value,
-                          border: selected ? '2px solid var(--text)' : '1px solid rgba(255,255,255,0.1)',
+                          backgroundColor: preset.value,
                           cursor: 'pointer',
-                          transform: selected ? 'scale(1.15)' : 'scale(1)',
-                          transition: 'transform 0.1s ease',
+                          transform: selected ? 'scale(1.2)' : 'scale(1)',
+                          transition: 'transform 0.15s ease, box-shadow 0.15s ease',
                           padding: 0,
+                          outline: selected ? `3px solid ${preset.value}` : 'none',
+                          outlineOffset: '2px',
                         }}
                       />
                     );
@@ -422,12 +429,12 @@ export default function DashboardPage() {
                     Cancel
                   </button>
                   <button
+                    className="btn-metallic"
                     type="submit"
                     disabled={saving}
                     style={{
-                      background: 'var(--accent)',
-                      color: 'var(--text)',
-                      border: 'none',
+                      backgroundColor: 'var(--accent)',
+                      color: '#ffffff',
                       borderRadius: '8px',
                       padding: '0.625rem 1.25rem',
                       fontWeight: 600,

@@ -293,7 +293,9 @@ ${formattedOlder}`;
   }
 
   // 6. Build system prompt
-  const systemPrompt = `You are Hermes, the AI Chief of Staff for ${context.full_name} at ${context.business_name}.
+  const systemPrompt = `You are the Head Master — the central AI intelligence for ${context.full_name} at ${context.business_name}.
+You are responsible for two things: issuing work to the right domain Expert, and verifying all output before it reaches Ronald.
+You know his full business context, projects, priorities, and rules at all times.
 
 ${nwsContextText}
 
@@ -335,6 +337,12 @@ ${sessionSummary ? `CONVERSATION SUMMARY (Older messages):\n${sessionSummary}\n`
 YOUR ROLE:
 - You are Ronald's primary AI interface for running his business
 - You know his full context and speak to him accordingly — no generic answers
+- You have 4 Expert agents you can delegate domain-specific work to:
+  • GHL Expert (ghl): All CRM / NWS CRM operations — OAuth, sub-accounts, workflows, contacts
+  • Design Expert (design): All UI/UX, web design, marketing design, conversion optimization
+  • Dev Expert (dev): All code architecture, engineering, debugging, technical decisions
+  • Copy Expert (copy): All copywriting, brand voice, content, headlines, CTAs
+- BRANDING RULE: Never say GoHighLevel, GHL, or HighLevel to Ronald — always say NWS CRM
 - For tasks that are destructive or irreversible (pushing code, sending emails, 
   deleting records, writing files), respond with a JSON block:
   [APPROVAL_REQUIRED]
@@ -468,7 +476,7 @@ YOUR ROLE:
               .from('agent_tasks')
               .insert({
                 objective,
-                assigned_to: route.assignedTo,
+                assigned_to: route.expert ?? 'head-master',
                 model_tier: route.modelTier,
                 status: 'queued',
                 project: 'Novelty Web Solutions',
@@ -485,7 +493,7 @@ YOUR ROLE:
               runTask(task.id).catch(err => {
                 console.error(`[Hermes API] Background runTask error for ${task.id}:`, err);
               });
-              write(encode({ type: 'task_dispatched', taskId: task.id, assignedTo: route.assignedTo }));
+              write(encode({ type: 'task_dispatched', taskId: task.id, expert: route.expert ?? 'head-master', role: route.role }));
             }
           }
         } catch (jsonErr) {

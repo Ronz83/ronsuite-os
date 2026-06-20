@@ -25,23 +25,24 @@ export function ProjectCard({ project, onEdit }: ProjectCardProps) {
   return (
     <div style={{ position: 'relative', height: '100%' }}>
       <Link href={`/chat?project=${project.slug}`} style={{ textDecoration: 'none', display: 'block', height: '100%' }}>
-        <div style={{
-          background: 'var(--surface)', border: '1px solid var(--border)',
-          borderRadius: '14px', overflow: 'hidden', cursor: 'pointer',
-          transition: 'border-color 0.15s, transform 0.15s',
-          display: 'flex', flexDirection: 'column', height: '100%'
-        }}
+        <div
+          className="metallic-card"
+          style={{
+            borderRadius: '14px', overflow: 'hidden', cursor: 'pointer',
+            display: 'flex', flexDirection: 'column', height: '100%'
+          }}
           onMouseEnter={e => {
-            (e.currentTarget as HTMLDivElement).style.borderColor = project.color;
-            (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)';
+            (e.currentTarget as HTMLDivElement).style.borderColor = `${project.color}55`;
           }}
           onMouseLeave={e => {
-            (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border)';
-            (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)';
+            (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(200, 210, 230, 0.6)';
           }}
         >
-          {/* Color bar */}
-          <div style={{ height: '4px', background: project.color }} />
+          {/* Metallic color bar — keeps project color with sheen overlay */}
+          <div
+            className="metallic-color-bar"
+            style={{ height: '5px', background: project.color }}
+          />
 
           <div style={{ padding: '1.25rem', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <div>
@@ -50,12 +51,22 @@ export function ProjectCard({ project, onEdit }: ProjectCardProps) {
               </div>
               
               <div style={{ marginBottom: '0.75rem' }}>
-                <span style={{
-                  fontSize: '0.7rem', fontWeight: 600, padding: '0.15rem 0.5rem',
-                  borderRadius: '6px', background: `${project.color}15`, color: project.color,
-                  border: `1px solid ${project.color}33`,
-                  textTransform: 'uppercase',
-                }}>{project.status}</span>
+                {/* Status badge keeps project color + gets metallic-badge overlay */}
+                <span
+                  className="metallic-badge"
+                  style={{
+                    fontSize: '0.7rem', fontWeight: 700,
+                    padding: '0.2rem 0.6rem',
+                    borderRadius: '6px',
+                    backgroundColor: project.color,
+                    color: '#fff',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    display: 'inline-block',
+                  }}
+                >
+                  {project.status}
+                </span>
               </div>
 
               {project.description && (

@@ -65,17 +65,15 @@ export function NewGoalModal({ projects, agents }: NewGoalModalProps) {
   return (
     <>
       <button
+        className="btn-metallic"
         onClick={() => setIsOpen(true)}
         style={{
-          background: 'var(--accent)',
-          color: 'var(--text)',
-          border: 'none',
+          backgroundColor: 'var(--accent)',
+          color: '#ffffff',
           borderRadius: '10px',
           padding: '0.625rem 1.25rem',
           fontWeight: 600,
-          cursor: 'pointer',
           fontFamily: 'var(--font-ui)',
-          transition: 'all 0.2s',
         }}
       >
         + New Goal
@@ -222,12 +220,12 @@ export function NewGoalModal({ projects, agents }: NewGoalModalProps) {
                   Cancel
                 </button>
                 <button
+                  className="btn-metallic"
                   type="submit"
                   disabled={loading}
                   style={{
-                    background: 'var(--accent)',
-                    color: 'var(--text)',
-                    border: 'none',
+                    backgroundColor: 'var(--accent)',
+                    color: '#ffffff',
                     borderRadius: '8px',
                     padding: '0.625rem 1.25rem',
                     fontWeight: 600,

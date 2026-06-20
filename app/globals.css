@@ -2,17 +2,17 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #0a0a0f;
-  --surface: #111118;
-  --surface-2: #16161f;
-  --border: #1e1e2e;
-  --accent: #6366f1;
-  --accent-hover: #7c3aed;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --danger: #f43f5e;
-  --text: #f8fafc;
-  --muted: #94a3b8;
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f4f5f7;
+  --border: #dfe1e6;
+  --accent: #0052cc;
+  --accent-hover: #0047b3;
+  --success: #00875a;
+  --warning: #ffab00;
+  --danger: #de350b;
+  --text: #091e42;
+  --muted: #000000;
   --font-ui: 'Inter', -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 }
@@ -216,3 +216,290 @@ input, textarea {
   }
 }
 
+/* ============================================================
+   METALLIC DESIGN SYSTEM — RonSuite OS
+   Premium brushed-metal aesthetic for sidebar, buttons, cards
+   ============================================================ */
+
+/* --- Solid Blue Sidebar --- */
+.metallic-blue {
+  background: var(--accent);
+  color: #ffffff;
+  position: relative;
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* --- Metallic Overlay for Colored Blocks ---
+ * Apply to any element that already has a background-color.
+ * Uses a pseudo-element so it doesn't fight inline backgroundColor.
+ * The element must have position: relative (added inline where needed).
+ */
+.metallic-overlay {
+  position: relative;
+  isolation: isolate;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.25),
+    0 2px 8px rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+.metallic-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.28) 0%,
+    rgba(255, 255, 255, 0.08) 40%,
+    rgba(0, 0, 0, 0.0)  60%,
+    rgba(0, 0, 0, 0.18) 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Keep content above the overlay */
+.metallic-overlay > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* --- Legacy alias: metallic-effect now maps to metallic-overlay --- */
+.metallic-effect {
+  position: relative;
+  isolation: isolate;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.2),
+    0 2px 6px rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
+.metallic-effect::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.28) 0%,
+    rgba(255, 255, 255, 0.06) 45%,
+    rgba(0, 0, 0, 0.0) 55%,
+    rgba(0, 0, 0, 0.18) 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+.metallic-effect > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* --- Metallic Button ---
+ * Full polished metal button treatment.
+ * Apply className="btn-metallic" plus inline backgroundColor.
+ */
+.btn-metallic {
+  position: relative;
+  isolation: isolate;
+  border: none !important;
+  cursor: pointer;
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.3),
+    0 4px 12px rgba(0, 0, 0, 0.25),
+    0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+.btn-metallic::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    170deg,
+    rgba(255, 255, 255, 0.35) 0%,
+    rgba(255, 255, 255, 0.08) 45%,
+    rgba(0, 0, 0, 0.0) 55%,
+    rgba(0, 0, 0, 0.2) 100%
+  );
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+  transition: opacity 0.15s ease;
+}
+
+.btn-metallic > * {
+  position: relative;
+  z-index: 2;
+}
+
+.btn-metallic:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.3),
+    0 8px 20px rgba(0, 0, 0, 0.3),
+    0 2px 6px rgba(0, 0, 0, 0.25);
+  filter: brightness(1.08);
+}
+
+.btn-metallic:active {
+  transform: translateY(0);
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    0 1px 3px rgba(0, 0, 0, 0.2);
+  filter: brightness(0.95);
+}
+
+.btn-metallic:disabled {
+  opacity: 0.55;
+  transform: none;
+  cursor: not-allowed;
+}
+
+/* --- Metallic Card (AgentGrid) --- */
+.metallic-card {
+  position: relative;
+  isolation: isolate;
+  background: #ffffff;
+  border: 1px solid rgba(200, 210, 230, 0.6) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 2px 12px rgba(0, 30, 80, 0.08),
+    0 1px 3px rgba(0, 0, 0, 0.06);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.metallic-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    rgba(74, 158, 255, 0.0) 0%,
+    rgba(74, 158, 255, 0.7) 50%,
+    rgba(74, 158, 255, 0.0) 100%
+  );
+  border-radius: 12px 12px 0 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.metallic-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    170deg,
+    rgba(255, 255, 255, 0.6) 0%,
+    rgba(255, 255, 255, 0.0) 50%,
+    rgba(0, 20, 60, 0.03) 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+.metallic-card > * {
+  position: relative;
+  z-index: 2;
+}
+
+.metallic-card:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 8px 24px rgba(0, 30, 80, 0.14),
+    0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+/* --- Metallic Badge (status pills, color blocks) --- */
+.metallic-badge {
+  position: relative;
+  isolation: isolate;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.25),
+    0 2px 6px rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+.metallic-badge::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.35) 0%,
+    rgba(255, 255, 255, 0.0) 55%,
+    rgba(0, 0, 0, 0.12) 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* --- Icon Float --- */
+.icon-float {
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.45));
+  transition: transform 0.2s ease, filter 0.2s ease;
+  display: inline-block;
+}
+
+.icon-float:hover {
+  transform: translateY(-2px);
+  filter: drop-shadow(0 5px 8px rgba(0, 0, 0, 0.55));
+}
+
+/* --- Sidebar Nav Item Active State --- */
+.sidebar-active-item {
+  position: relative;
+  isolation: isolate;
+  background: rgba(255, 255, 255, 0.18) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.2),
+    0 2px 8px rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+}
+
+.sidebar-active-item::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.2) 0%,
+    rgba(255, 255, 255, 0.0) 60%
+  );
+  pointer-events: none;
+}
+
+/* --- Metallic Color Bar (ProjectCard top strip) --- */
+.metallic-color-bar {
+  position: relative;
+  overflow: hidden;
+}
+
+.metallic-color-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.3) 0%,
+    rgba(255, 255, 255, 0.0) 60%,
+    rgba(0, 0, 0, 0.15) 100%
+  );
+  pointer-events: none;
+}

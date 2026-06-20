@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
         project: project || null,
         priority: priority ?? 3,
         definition_of_done: definition_of_done || null,
-        assigned_to: decision.assignedTo,
+        assigned_to: decision.expert ?? 'head-master',
         model_tier: decision.modelTier,
         status: 'queued',
         created_by: created_by || 'Hermes'
@@ -44,10 +44,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       taskId: task.id,
-      assignedTo: task.assigned_to,
+      expert: task.assigned_to,
+      role: decision.role,
       modelTier: task.model_tier,
       status: task.status,
-      message: `Dispatched task successfully to ${task.assigned_to}.`
+      message: `Dispatched task to ${task.assigned_to} (role: ${decision.role}).`
     });
 
   } catch (err: any) {
