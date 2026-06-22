@@ -460,6 +460,7 @@ export default function HermesPage() {
       const res = await fetch('/api/hermes/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           message: userText,
           session_id: currentSessionId || undefined,

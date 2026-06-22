@@ -13,8 +13,8 @@ function encode(obj: unknown) {
 
 export async function POST(req: Request) {
   const supabaseAuth = await createClient();
-  const { data: { user } } = await supabaseAuth.auth.getUser();
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+  if (!user) return new Response(`Unauthorized: ${authError?.message || 'No user found in session'}`, { status: 401 });
 
   const { message, session_id, context_id, attachmentIds } = await req.json() as {
     message: string;
