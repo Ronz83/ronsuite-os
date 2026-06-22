@@ -469,7 +469,8 @@ export default function HermesPage() {
       });
 
       if (!res.ok) {
-        throw new Error('Chat API returned error');
+        const errText = await res.text();
+        throw new Error(`API Error ${res.status}: ${errText}`);
       }
 
       const reader = res.body?.getReader();
