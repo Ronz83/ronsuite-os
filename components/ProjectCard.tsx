@@ -24,7 +24,7 @@ export function ProjectCard({ project, onEdit }: ProjectCardProps) {
 
   return (
     <div style={{ position: 'relative', height: '100%' }}>
-      <Link href={`/chat?project=${project.slug}`} style={{ textDecoration: 'none', display: 'block', height: '100%' }}>
+      <Link href={`/hermes?project=${project.slug}`} style={{ textDecoration: 'none', display: 'block', height: '100%' }}>
         <div
           className="metallic-card"
           style={{

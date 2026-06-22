@@ -1,5 +1,5 @@
 import { qwen } from '../../qwen';
-import { createBrokerClient } from '../../supabase/broker';
+import { createServiceClient as createBrokerClient } from '../../supabase/service';
 
 // Define industry blueprints containing core leaks, entry offers, and workflow rules
 const industryBlueprints: Record<string, string> = {

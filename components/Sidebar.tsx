@@ -10,30 +10,23 @@ const NAV_GROUPS = [
     items: [
       { href: '/dashboard', icon: '⬛', label: 'Dashboard' },
       { href: '/hermes', icon: '🤖', label: 'Head Master' },
-      { href: '/chat', icon: '💬', label: 'Chat' },
     ]
   },
   {
     title: 'Operations',
     items: [
-      { href: '/boardroom', icon: '🤝', label: 'Agent Monitor' },
-      { href: '/projects', icon: '🗂', label: 'Projects' },
-      { href: '/goals', icon: '🎯', label: 'Goals' },
       { href: '/board', icon: '📋', label: 'Board' },
-      { href: '/experts', icon: '🎓', label: 'Experts' },
     ]
   },
   {
     title: 'Knowledge',
     items: [
       { href: '/memory', icon: '🧠', label: 'Memory' },
-      { href: '/nws-context', icon: '⚡', label: 'Single Plan' },
     ]
   },
   {
     title: 'System',
     items: [
-      { href: '/onboarding', icon: '🚀', label: 'Onboarding Hub' },
       { href: '/settings', icon: '⚙️', label: 'Settings' },
     ]
   }
