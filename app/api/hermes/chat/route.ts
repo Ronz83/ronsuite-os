@@ -6,6 +6,7 @@ import type { MessageParam } from '@anthropic-ai/sdk/resources/messages';
 import { routeTask } from '@/lib/dispatch/router';
 import { runTask } from '@/lib/dispatch/executor';
 import { brainContextString } from '@/lib/brain/unified';
+import { cookies } from 'next/headers';
 
 function encode(obj: unknown) {
   return `data: ${JSON.stringify(obj)}\n\n`;
@@ -13,6 +14,10 @@ function encode(obj: unknown) {
 
 export async function POST(req: Request) {
   const supabaseAuth = await createClient();
+  const cookieStore = await cookies();
+  console.log('[Hermes API Auth Debug] Received cookies count:', cookieStore.getAll().length);
+  console.log('[Hermes API Auth Debug] Cookie names:', cookieStore.getAll().map(c => c.name));
+  
   const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
   if (!user) return new Response(`Unauthorized: ${authError?.message || 'No user found in session'}`, { status: 401 });
 
