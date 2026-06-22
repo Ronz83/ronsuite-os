@@ -113,9 +113,12 @@ function mapMessagesToOpenAi(messages: any[]): any[] {
 
 // Simple Async Generator to mimic Anthropic stream
 async function* streamOpenRouter(messages: any[], model: string, maxTokens: number, system?: string, tools?: any[]) {
-  const openRouterKey = process.env.OPENROUTER_API_KEY;
-  if (!openRouterKey) {
-    throw new Error('OPENROUTER_API_KEY environment variable is not defined.');
+  const isHermes = !!process.env.HERMES_ENDPOINT;
+  const baseUrl = process.env.HERMES_ENDPOINT || 'https://openrouter.ai/api/v1';
+  const apiKey = isHermes ? process.env.HERMES_API_KEY : process.env.OPENROUTER_API_KEY;
+
+  if (!apiKey) {
+    throw new Error(`API key missing for ${isHermes ? 'Hermes Agent' : 'OpenRouter'}.`);
   }
 
   const payload: any = {
@@ -137,14 +140,19 @@ async function* streamOpenRouter(messages: any[], model: string, maxTokens: numb
     }));
   }
 
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${apiKey}`
+  };
+
+  if (!isHermes) {
+    headers['HTTP-Referer'] = 'https://ronsuite-os.local';
+    headers['X-Title'] = 'RonSuite OS';
+  }
+
+  const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${openRouterKey}`,
-      'HTTP-Referer': 'https://ronsuite-os.local',
-      'X-Title': 'RonSuite OS'
-    },
+    headers,
     body: JSON.stringify(payload)
   });
 
@@ -236,9 +244,12 @@ async function* streamOpenRouter(messages: any[], model: string, maxTokens: numb
 }
 
 async function createNonStream(messages: any[], model: string, maxTokens: number, system?: string, tools?: any[]) {
-  const openRouterKey = process.env.OPENROUTER_API_KEY;
-  if (!openRouterKey) {
-    throw new Error('OPENROUTER_API_KEY environment variable is not defined.');
+  const isHermes = !!process.env.HERMES_ENDPOINT;
+  const baseUrl = process.env.HERMES_ENDPOINT || 'https://openrouter.ai/api/v1';
+  const apiKey = isHermes ? process.env.HERMES_API_KEY : process.env.OPENROUTER_API_KEY;
+
+  if (!apiKey) {
+    throw new Error(`API key missing for ${isHermes ? 'Hermes Agent' : 'OpenRouter'}.`);
   }
 
   const payload: any = {
@@ -259,14 +270,19 @@ async function createNonStream(messages: any[], model: string, maxTokens: number
     }));
   }
 
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${apiKey}`
+  };
+
+  if (!isHermes) {
+    headers['HTTP-Referer'] = 'https://ronsuite-os.local';
+    headers['X-Title'] = 'RonSuite OS';
+  }
+
+  const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${openRouterKey}`,
-      'HTTP-Referer': 'https://ronsuite-os.local',
-      'X-Title': 'RonSuite OS'
-    },
+    headers,
     body: JSON.stringify(payload)
   });
 
