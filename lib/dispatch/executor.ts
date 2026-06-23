@@ -324,7 +324,7 @@ async function executeTier1Tool(name: string, input: any): Promise<string> {
         await logToBrain({
           agent: 'Dispatch Guardrails',
           entry_type: 'flag',
-          project: task.project,
+          project: undefined,
           title: 'Tier 2 capability block: command touched credential store',
           summary: `run_command refused: "${command}" matches credential denylist.`,
           importance: 5,
