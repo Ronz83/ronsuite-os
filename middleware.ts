@@ -12,6 +12,11 @@ export async function middleware(request: NextRequest) {
         getAll() { return request.cookies.getAll(); },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          
+          // Fix for downstream API routes not getting the refreshed cookies
+          const cookieHeader = request.cookies.getAll().map(c => `${c.name}=${c.value}`).join('; ');
+          request.headers.set('cookie', cookieHeader);
+          
           supabaseResponse = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
@@ -23,6 +28,11 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
   const { pathname } = request.nextUrl;
+  
+  console.log(`[Middleware Debug] ${pathname}: User is`, user?.id || 'null');
+  if (pathname === '/hermes') {
+    console.log('[Middleware Debug] Cookies on /hermes:', request.cookies.getAll().map(c => c.name));
+  }
 
   const isLocalhost = request.nextUrl.hostname === 'localhost' || request.nextUrl.hostname === '127.0.0.1';
   const isPublic = isLocalhost || pathname.startsWith('/auth') ||
