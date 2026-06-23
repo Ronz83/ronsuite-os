@@ -457,9 +457,15 @@ export default function HermesPage() {
     setMessages(prev => [...prev, { role: 'user', content: displayMsg }]);
 
     try {
+      // Get the current session explicitly to send as a Bearer token
+      const { data: { session } } = await supabase.auth.getSession();
+
       const res = await fetch('/api/hermes/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {})
+        },
         credentials: 'include',
         body: JSON.stringify({
           message: userText,
