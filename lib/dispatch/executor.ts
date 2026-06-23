@@ -166,9 +166,55 @@ function violatesCredentialPolicy(text: string): boolean {
   return CREDENTIAL_DENYLIST.some(rx => rx.test(text));
 }
 
+async function callBridgeIfAvailable(action: string, input: any): Promise<{ success: boolean; result?: any; error?: string }> {
+  const bridgeUrl = process.env.NEXT_PUBLIC_BRIDGE_URL;
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  if (bridgeUrl && isProduction) {
+    try {
+      console.log(`[Bridge Client] Routing ${action} to local bridge at ${bridgeUrl}`);
+      const response = await fetch(`${bridgeUrl}/api/bridge`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`
+        },
+        body: JSON.stringify({ action, input }),
+      });
+      
+      if (!response.ok) {
+        const errText = await response.text();
+        return { success: false, error: `Bridge returned status ${response.status}: ${errText}` };
+      }
+      
+      const data = await response.json();
+      if (data.success) {
+        return { success: true, result: data.result };
+      } else {
+        return { success: false, error: data.error };
+      }
+    } catch (e: any) {
+      console.error(`[Bridge Client] Bridge call failed for ${action}:`, e.message);
+      return { success: false, error: `Bridge connection failed: ${e.message}` };
+    }
+  }
+  return { success: false, error: 'Bridge not configured or not running in production' };
+}
+
 // Helper to execute safe Tier 0 tool calls
 async function executeTier0Tool(name: string, input: any): Promise<string> {
   const apiKey = process.env.BRAVE_SEARCH_API_KEY;
+  
+  // Try bridge first for local filesystem operations
+  if (name === 'list_local_dir' || name === 'read_local_file') {
+    const bridgeRes = await callBridgeIfAvailable(name, input);
+    if (bridgeRes.success) {
+      return typeof bridgeRes.result === 'string' ? bridgeRes.result : JSON.stringify(bridgeRes.result);
+    } else if (bridgeRes.error && !bridgeRes.error.includes('not configured')) {
+      return `Bridge Error: ${bridgeRes.error}`;
+    }
+  }
+
   switch (name) {
     case 'web_search': {
       if (!apiKey) return 'Error: Brave Search API key missing.';
@@ -245,6 +291,16 @@ async function executeTier0Tool(name: string, input: any): Promise<string> {
 
 // Executes approved Tier 1 tool calls
 async function executeTier1Tool(name: string, input: any): Promise<string> {
+  // Try bridge first for local write/command operations
+  if (name === 'write_local_file' || name === 'run_command') {
+    const bridgeRes = await callBridgeIfAvailable(name, input);
+    if (bridgeRes.success) {
+      return typeof bridgeRes.result === 'string' ? bridgeRes.result : JSON.stringify(bridgeRes.result);
+    } else if (bridgeRes.error && !bridgeRes.error.includes('not configured')) {
+      return `Bridge Error: ${bridgeRes.error}`;
+    }
+  }
+
   switch (name) {
     case 'write_local_file': {
       const filePath = input?.file_path || input?.path || input?.file || input?.filePath;
@@ -268,7 +324,7 @@ async function executeTier1Tool(name: string, input: any): Promise<string> {
         await logToBrain({
           agent: 'Dispatch Guardrails',
           entry_type: 'flag',
-          project: undefined,
+          project: task.project,
           title: 'Tier 2 capability block: command touched credential store',
           summary: `run_command refused: "${command}" matches credential denylist.`,
           importance: 5,
