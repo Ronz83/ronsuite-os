@@ -34,8 +34,7 @@ export async function middleware(request: NextRequest) {
     console.log('[Middleware Debug] Cookies on /hermes:', request.cookies.getAll().map(c => c.name));
   }
 
-  const isLocalhost = request.nextUrl.hostname === 'localhost' || request.nextUrl.hostname === '127.0.0.1';
-  const isPublic = isLocalhost || pathname.startsWith('/auth') ||
+  const isPublic = pathname.startsWith('/auth') ||
     pathname.startsWith('/api') ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/icons') ||
