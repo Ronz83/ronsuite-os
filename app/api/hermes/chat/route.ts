@@ -1,5 +1,6 @@
 import { anthropic, MODEL, MAX_TOKENS } from '@/lib/anthropic';
 import { createClient } from '@supabase/supabase-js';
+import { createClient as createSSRClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { NextResponse } from 'next/server';
 import type { MessageParam } from '@anthropic-ai/sdk/resources/messages';
@@ -12,27 +13,41 @@ function encode(obj: unknown) {
 }
 
 export async function POST(req: Request) {
-  const authHeader = req.headers.get('Authorization');
-  
-  if (!authHeader) {
-    return new Response('Unauthorized: Missing Authorization header', { status: 401 });
-  }
+  let user: any = null;
+  let authError: any = null;
 
-  // Use standard supabase client with the provided Bearer token
-  const supabaseAuth = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      global: {
-        headers: {
-          Authorization: authHeader
+  // Strategy 1: Bearer token (preferred — immune to cookie issues)
+  const authHeader = req.headers.get('Authorization');
+  if (authHeader) {
+    const supabaseAuth = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: authHeader
+          }
         }
       }
+    );
+    const result = await supabaseAuth.auth.getUser();
+    user = result.data.user;
+    authError = result.error;
+  }
+
+  // Strategy 2: SSR cookie fallback (for cached browsers that haven't loaded the new JS yet)
+  if (!user) {
+    try {
+      const supabaseSSR = await createSSRClient();
+      const result = await supabaseSSR.auth.getUser();
+      user = result.data.user;
+      authError = result.error;
+    } catch (e: any) {
+      console.error('[Hermes API] SSR cookie fallback failed:', e.message);
     }
-  );
-  
-  const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
-  if (!user) return new Response(`Unauthorized: ${authError?.message || 'Invalid or expired token'}`, { status: 401 });
+  }
+
+  if (!user) return new Response(`Unauthorized: ${authError?.message || 'Auth session missing!'}`, { status: 401 });
 
   const { message, session_id, context_id, attachmentIds } = await req.json() as {
     message: string;
