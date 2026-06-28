@@ -1,8 +1,12 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { ChevronRight, LayoutDashboard, Zap, Phone, BrainCircuit, Workflow, Handshake, Network, UserPlus } from 'lucide-react';
+import { ChevronRight, LayoutDashboard, Zap, Phone, BrainCircuit, Workflow, Handshake, Network } from 'lucide-react';
 import Link from 'next/link';
+import HowItWorks from '@/components/HowItWorks';
+import PricingSection from '@/components/PricingSection';
+import AppMarketplace from '@/components/AppMarketplace';
+import ROICalculator from '@/components/ROICalculator';
 
 export default function LandingPage() {
   return (
@@ -75,14 +79,22 @@ export default function LandingPage() {
             className="flex flex-col sm:flex-row items-center justify-center gap-4"
           >
             <Link href="/dashboard" className="w-full sm:w-auto px-8 py-4 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/25">
-              Deploy Your OS Today <ChevronRight className="w-4 h-4" />
+              Get Your Free Business Account <ChevronRight className="w-4 h-4" />
             </Link>
-            <button className="w-full sm:w-auto px-8 py-4 rounded-full bg-white/5 text-white font-medium hover:bg-white/10 transition-colors border border-white/10">
-              Book a Guided Demo
+            <button
+              onClick={() => {
+                document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="w-full sm:w-auto px-8 py-4 rounded-full bg-white/5 text-white font-medium hover:bg-white/10 transition-colors border border-white/10"
+            >
+              See How It Works
             </button>
           </motion.div>
         </div>
       </section>
+
+      {/* How It Works */}
+      <HowItWorks />
 
       {/* Core Value Proposition */}
       <section className="py-24 border-y border-white/5 bg-black/20">
@@ -136,7 +148,7 @@ export default function LandingPage() {
                         <BrainCircuit className="w-4 h-4" /> NWS OS
                       </span>
                       <span className="text-slate-300 text-sm leading-relaxed">
-                        I've initiated the setup. Our onboarding team is configuring the Vapi voice models and GHL routing. It will be live on your dashboard in 24 hours.
+                        I&apos;ve initiated the setup. Our onboarding team is configuring the Vapi voice models and GHL routing. It will be live on your dashboard in 24 hours.
                       </span>
                     </div>
                   </div>
@@ -147,55 +159,14 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Pricing Matrix */}
-      <section className="py-24 px-6 max-w-7xl mx-auto">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl lg:text-4xl font-bold mb-4">Choose Your Intelligence Tier</h2>
-          <p className="text-slate-400">All plans include our premium, distraction-free customer portal.</p>
-        </div>
+      {/* Pricing */}
+      <PricingSection />
 
-        <div className="grid lg:grid-cols-3 gap-8">
-          {[
-            {
-              name: 'Core OS',
-              price: '$299',
-              desc: 'Essential command center with high-speed standard reasoning.',
-              features: ['Basic LLM (GPT-4o-mini)', 'Native Integrations (Stripe, Google)', 'Single-step Agents', 'Standard AI Voice Receptionist', 'Email Support']
-            },
-            {
-              name: 'Pro OS',
-              price: '$599',
-              desc: 'Expanded capabilities and multi-step agentic workflows.',
-              features: ['Higher Token Quotas', 'Expanded Connectors (Zapier, Shopify)', 'Multi-step Workflows', 'Advanced Call Router', 'Priority Slack Setup'],
-              highlighted: true
-            },
-            {
-              name: 'Elite OS',
-              price: '$999+',
-              desc: 'Premium intelligence with proactive autonomous agency.',
-              features: ['Premium LLM (Claude 3.5 / GPT-4o)', 'Custom MCP Connections', 'Proactive AI Agency', 'Bespoke Conversational Design', 'Dedicated Architect'],
-            }
-          ].map((tier, i) => (
-            <div key={i} className={`rounded-3xl border ${tier.highlighted ? 'border-indigo-500 bg-indigo-500/5' : 'border-white/10 bg-white/5'} p-8 relative overflow-hidden`}>
-              {tier.highlighted && <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-indigo-500 to-purple-500" />}
-              <h3 className="text-xl font-semibold mb-2">{tier.name}</h3>
-              <p className="text-slate-400 text-sm mb-6 h-10">{tier.desc}</p>
-              <div className="text-4xl font-bold mb-8">{tier.price}<span className="text-lg text-slate-500 font-normal">/mo</span></div>
-              <ul className="space-y-4 mb-8">
-                {tier.features.map((f, j) => (
-                  <li key={j} className="flex items-center gap-3 text-sm text-slate-300">
-                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                    {f}
-                  </li>
-                ))}
-              </ul>
-              <button className={`w-full py-3 rounded-xl font-medium transition-colors ${tier.highlighted ? 'bg-indigo-500 hover:bg-indigo-600 text-white' : 'bg-white/10 hover:bg-white/20 text-white'}`}>
-                Select {tier.name}
-              </button>
-            </div>
-          ))}
-        </div>
-      </section>
+      {/* App Marketplace */}
+      <AppMarketplace />
+
+      {/* ROI Calculator */}
+      <ROICalculator />
 
       {/* License vs Fuel */}
       <section className="py-24 border-t border-white/5 bg-black/20 relative overflow-hidden">
@@ -243,7 +214,7 @@ export default function LandingPage() {
       {/* Hybrid Provisioning */}
       <section className="py-24 px-6 max-w-4xl mx-auto text-center">
         <h2 className="text-3xl lg:text-4xl font-bold mb-4">Hybrid Provisioning</h2>
-        <p className="text-slate-400 text-lg mb-16">We don't expect you to build your business integrations. NWS OS utilizes a seamless hybrid model to guarantee error-free setups.</p>
+        <p className="text-slate-400 text-lg mb-16">We don&apos;t expect you to build your business integrations. NWS OS utilizes a seamless hybrid model to guarantee error-free setups.</p>
         
         <div className="grid sm:grid-cols-4 gap-8">
           {[

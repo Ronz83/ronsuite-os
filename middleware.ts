@@ -34,12 +34,18 @@ export async function middleware(request: NextRequest) {
     console.log('[Middleware Debug] Cookies on /hermes:', request.cookies.getAll().map(c => c.name));
   }
 
-  const isPublic = pathname.startsWith('/auth') ||
+  const isPublic = pathname === '/' ||
+    pathname.startsWith('/auth') ||
     pathname.startsWith('/api') ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/icons') ||
     pathname === '/manifest.json' ||
     pathname === '/favicon.ico';
+
+  // Bypass login completely on localhost/development
+  if (process.env.NODE_ENV === 'development') {
+    return supabaseResponse;
+  }
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();

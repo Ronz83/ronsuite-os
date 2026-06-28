@@ -19,6 +19,12 @@ const NAV_GROUPS = [
     ]
   },
   {
+    title: 'Projects',
+    items: [
+      { href: '/businesses-os', icon: '🌐', label: 'NWS OS' },
+    ]
+  },
+  {
     title: 'Knowledge',
     items: [
       { href: '/memory', icon: '🧠', label: 'Memory' },
